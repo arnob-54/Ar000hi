@@ -2,7 +2,7 @@
 import uuid
 import time
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from app.models.database import get_db
 
 _MAX_MSGS_PER_10S = 20
@@ -47,7 +47,7 @@ def sender_for_ride(ride_id: str, user_id: str) -> str | None:
 def save_message(ride_id: str, user_id: str, sender_name: str, message: str) -> dict:
     message = message[:500]
     msg_id = str(uuid.uuid4())
-    created_at = datetime.utcnow().isoformat()
+    created_at = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
     conn = get_db()
     conn.execute(
         "INSERT INTO chat_messages (id, ride_id, sender_id, message, created_at) VALUES (?, ?, ?, ?, ?)",

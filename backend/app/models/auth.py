@@ -3,7 +3,7 @@ import uuid
 import random
 import time
 import threading
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from app.models.database import get_db
 from app.models.identity import hash_password, verify_password, create_access_token
 from app.schemas.auth import RegisterRequest, LoginRequest, VerifyOTPRequest, ResendOTPRequest
@@ -101,7 +101,7 @@ def register(body: RegisterRequest):
     # Generate OTP
     otp_code = str(random.randint(100000, 999999))
     otp_id = str(uuid.uuid4())
-    expires_at = (datetime.utcnow() + timedelta(minutes=10)).isoformat()
+    expires_at = (datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=10)).isoformat()
 
     conn.execute(
         "INSERT INTO otp_codes (id, email, code, expires_at) VALUES (?, ?, ?, ?)",
@@ -140,7 +140,7 @@ def verify_otp(body: VerifyOTPRequest, client_ip: str):
         raise DomainError(status_code=400, detail="No pending OTP found for this email")
 
     # Check expiry
-    if datetime.fromisoformat(otp["expires_at"]) < datetime.utcnow():
+    if datetime.fromisoformat(otp["expires_at"]) < datetime.now(timezone.utc).replace(tzinfo=None):
         conn.close()
         raise DomainError(status_code=400, detail="OTP has expired. Please request a new one.")
 
@@ -252,7 +252,7 @@ def resend_otp(body: ResendOTPRequest):
 
     otp_code = str(random.randint(100000, 999999))
     otp_id = str(uuid.uuid4())
-    expires_at = (datetime.utcnow() + timedelta(minutes=10)).isoformat()
+    expires_at = (datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=10)).isoformat()
 
     conn.execute(
         "INSERT INTO otp_codes (id, email, code, expires_at) VALUES (?, ?, ?, ?)",

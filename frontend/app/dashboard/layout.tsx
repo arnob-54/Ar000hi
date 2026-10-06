@@ -15,20 +15,20 @@ interface UserInfo {
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [user, setUser] = useState<UserInfo | null>(null);
-  const [mounted, setMounted] = useState(false);
+  const [user] = useState<UserInfo | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = localStorage.getItem("user");
+      return raw ? (JSON.parse(raw) as UserInfo) : null;
+    } catch {
+      return null;
+    }
+  });
 
   useEffect(() => {
-    setMounted(true);
     const token = localStorage.getItem("token");
     const userData = localStorage.getItem("user");
     if (!token || !userData) {
-      router.push("/login");
-      return;
-    }
-    try {
-      setUser(JSON.parse(userData));
-    } catch {
       router.push("/login");
     }
   }, [router]);
@@ -39,7 +39,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     router.push("/login");
   };
 
-  if (!mounted || !user) {
+  if (!user) {
     return (
       <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
         <span className="spinner spinner-lg" />

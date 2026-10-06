@@ -2,7 +2,7 @@
 Seed script to create clean demo users and rides for Sprint-3 screenshots.
 """
 import uuid
-from datetime import datetime as dt, timedelta
+from datetime import datetime as dt, timedelta, timezone
 import sqlite3
 import os
 import sys
@@ -48,7 +48,7 @@ conn.execute("DELETE FROM ride_stops WHERE ride_id IN (SELECT id FROM rides WHER
 conn.execute("DELETE FROM ride_passengers WHERE ride_id IN (SELECT id FROM rides WHERE driver_id IN (?, ?, ?))", (f_driver, r_driver, t_driver))
 conn.execute("DELETE FROM rides WHERE driver_id IN (?, ?, ?)", (f_driver, r_driver, t_driver))
 
-tomorrow = dt.utcnow() + timedelta(days=1)
+tomorrow = dt.now(timezone.utc).replace(tzinfo=None) + timedelta(days=1)
 time_8am = tomorrow.replace(hour=8, minute=0, second=0, microsecond=0).isoformat()
 time_930am = tomorrow.replace(hour=9, minute=30, second=0, microsecond=0).isoformat()
 time_11am = tomorrow.replace(hour=11, minute=0, second=0, microsecond=0).isoformat()

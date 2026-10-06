@@ -18,7 +18,7 @@ import os
 import sqlite3
 import uuid
 from contextlib import contextmanager
-from datetime import datetime as dt
+from datetime import datetime as dt, timezone
 
 # Platform cut of each ride fare. 0% by default — the column exists so switching
 # this on later is a config change, not a migration + backfill.
@@ -112,7 +112,7 @@ def post(conn: sqlite3.Connection, user_id: str, kind: str, amount: float, *,
     )
     conn.execute(
         "UPDATE wallets SET balance = ?, updated_at = ? WHERE user_id = ?",
-        (new_balance, dt.utcnow().isoformat(), user_id),
+        (new_balance, dt.now(timezone.utc).replace(tzinfo=None).isoformat(), user_id),
     )
     return {"id": tx_id, "kind": kind, "amount": amount, "balance_after": new_balance}
 

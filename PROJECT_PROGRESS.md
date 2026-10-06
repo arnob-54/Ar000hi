@@ -1,7 +1,7 @@
 # Arooohi — Progress Report
 
 > SRS source: `Misc./Arooohi_Complete_SRS_Report.pdf`. Roadmap + backlog: [`PROJECT_PLAN.md`](./PROJECT_PLAN.md).
-> Statuses: ✅ done · 🔶 partial · ❌ not started. Updated 2026-09-01 (Sprint 4 in progress).
+> Statuses: ✅ done · 🔶 partial · ❌ not started. Updated 2026-10-07 (test & repair pass; all sprints closed).
 
 ## 1. Overall
 
@@ -54,7 +54,7 @@ sprint is outstanding, so no downstream work is blocked.
 | 4 — Payments & Earnings | 5/5 ✅ | Splitter (#5), Surge (#13), Wallet & bKash (#9), Driver Earnings (#16), Ride History (#10) — **sprint complete** |
 | 5 — Admin & Quality | 4/4 ✅ | Complaints (#17), Eco (#20), Cancellation (#18), Driver Rating (#7) — **sprint complete** |
 
-## 4. Verification evidence (2026-07-31)
+## 4. Verification evidence (2026-07-31; re-verified 2026-10-07)
 
 ### Backend
 - `import app.main` boots cleanly; `init_db()` idempotent (tables + surge seed + admin).
@@ -68,10 +68,11 @@ sprint is outstanding, so no downstream work is blocked.
   smoke** (register, surge `is_current`, total_seats, 32-hex token, share history,
   login rate-limit 429).
 
-### Frontend (Node v24.18.0, user-local)
-- `npm run lint` — **0 problems**.
+### Frontend (Node v24.18.0, user-local; re-verified 2026-10-07 on a fresh Node 24.18.0 fetch)
+- `npm run lint` — **0 problems** (4 errors found and fixed 2026-10-07; see §5 "Test & repair pass").
 - `npx tsc --noEmit` — **clean**.
-- `npm run build` — **success, all routes compile**.
+- `npm run build` — **success, all routes compile** (21 routes).
+- Backend pytest — **53/53** on Python 3.14.7 (2026-10-07).
 
 ### Runtime state (checked recent sessions)
 - **One-command launcher (Session 12):** `./launch.py` / `./launch.sh` / `launch.bat`
@@ -85,10 +86,10 @@ sprint is outstanding, so no downstream work is blocked.
 - `arooohi.db`: carries live user/test data (driver approved, completed ride,
   resolved SOS/complaint) — kept for the demo; pre-test backup at
   `Misc./arooohi.db.backup-20260731-214145`.
-- `git status` — working tree has Session-12 work **uncommitted** (HEAD `ba43984`):
-  `launch.py`/`launch.sh`/`launch.bat`, `scripts/ascii_logo.py`,
-  `frontend/lib/api.ts` + the 15 page edits, `frontend/package.json`, backend CORS +
-  tracking share-URL changes, and `PROJECT_PLAN.md` notes.
+- `git status` — as of 2026-10-07: HEAD `fcc3cb8`, tree clean before the
+  test & repair pass; that pass's changes (14 files: requirements, OpenAPI
+  fixture, 8 backend model files, seed script, 1 test file, 2 frontend
+  pages, `.gitignore`, docs) are **uncommitted** — see `.arooohi-dev/SESSION.md`.
 
 ### Live browser test (Session 10, Playwright)
 - Full end-to-end run of the live UI on both running servers: **45/45 passed,
@@ -301,6 +302,32 @@ clean (21 routes).
   ride 404, unauthenticated 401, in-progress ride 400). Browser run: prompt → 4 stars →
   submitted → prompt gone, 0 console errors. All six existing suites re-run green.
 
+### Test & repair pass (2026-10-07)
+Full-project test pass on a fresh environment (Python 3.14.7, Node 24.18.0),
+then repairs for everything it exposed. Session log: `.arooohi-dev/SESSION.md`.
+
+- **Faults found:** (1) pinned `pydantic==2.9.2` has no cp314 wheels —
+  `pip install -r requirements.txt` failed without a Rust toolchain;
+  (2) `test_public_api_contract_is_unchanged` failed — the OpenAPI fixture
+  was stale vs. current FastAPI/Pydantic output; (3) `npm run lint` had
+  **4 errors** (3 × `react-hooks/set-state-in-effect`, 1 ×
+  `no-explicit-any`) — the notes' "0 problems" claim no longer held under
+  eslint-plugin-react-hooks v6; (4) 30 `datetime.utcnow()` deprecation
+  warnings; (5) the demo DB and its backup are tracked in git on the
+  public repo.
+- **Repairs:** requirements re-pinned to the verified Python 3.14 set;
+  OpenAPI fixture regenerated; `utcnow()` → `now(timezone.utc)
+  .replace(tzinfo=None)` in 10 files (naive-UTC semantics kept);
+  frontend lint fixed with lazy `useState` initializers, a setState-free
+  `fetchRideData()`, and a `MatchCandidate` interface; `.gitignore`
+  now blocks `*.db*`.
+- **Verified after repairs:** backend **53/53** pytest (was 52/53),
+  0 project-code warnings; frontend **lint 0 problems**, `tsc --noEmit`
+  clean, `npm run build` clean (21 routes); live boot smoke of both
+  servers green; demo DB row counts unchanged.
+- **Still open:** purging the committed demo DBs from git history
+  (`git filter-repo` — decision pending with Ornab).
+
 ## 6. Known gaps & accepted deviations
 
 | Area | Gap | Mitigation / plan |
@@ -311,26 +338,28 @@ clean (21 routes).
 | Notifications | SOS + auto-share mocked (console log) | Centralize into a notifications service |
 | Verification | Manual doc review (SRS: manual/automated) | Accepted; OCR automation out of scope |
 | Mobile | Web only (SRS: React Native) | Future work |
-| Tests | Partial: `backend/tests/test_campus_features.py` only (5 cases, features #3/#6/#8/#14/#19). `pytest`+`httpx` absent from `requirements.txt`; suite hardcodes POSIX `/tmp/test_arooohi.db` so it will not run on Windows | Add the pins, derive the temp path from `tempfile.gettempdir()`, and port the 54-check regression script + Playwright e2e harness |
+| Tests | Partial: `backend/tests/` (53 cases, pytest). `pytest`+`httpx` live in `requirements-dev.txt`; conftest uses `TemporaryDirectory`, so it runs on any OS | Port the 54-check regression script + Playwright e2e harness |
 
 ## 7. Not-yet-fixed defects (tracked in PROJECT_PLAN.md §6)
 
 The 🔴 security/correctness backlog from the Session-8 audit was cleared in the
 Session-9 hardening pass (see §5). Remaining gaps are the accepted deviations in
 §6: console-mock notifications (SOS + auto-share), 5s polling tracking (NFR-1 <2s),
-only a partial pytest suite (and one that cannot run from `requirements.txt` as-is),
-SQLite instead of PostgreSQL/PostGIS, and the 5 missing features in §2.
+a partial pytest suite (committed, but the 54-check regression script and the
+Playwright e2e harness still live only in `/tmp`), SQLite instead of
+PostgreSQL/PostGIS, and the demo DBs purged from git history (decision pending).
 
 ## 8. Next actions (priority order)
 
 1. ✅ Done (Sessions 9–13) — see HISTORY/PLAN. Live-browser tests 45/45 (Session 10);
    cross-platform launcher + IPv4 fix (Session 12); desktop-installer attempt reverted (Session 13).
-2. Commit the Session-12 launcher + IPv4 work (currently uncommitted) when the team is ready.
-3. **All 20 SRS features are implemented.** What remains is non-functional: a committed
-   pytest suite, WebSocket live tracking (NFR-1), and the SQLite → PostgreSQL question.
-4. Make the committed test suite runnable: add `pytest` + `httpx` to `requirements.txt`
-   and replace the hardcoded `/tmp/test_arooohi.db` with `tempfile.gettempdir()`.
+2. ✅ Done — the Session-12 launcher + IPv4 work is committed (HEAD `fcc3cb8`).
+3. **All 20 SRS features are implemented.** What remains is non-functional:
+   WebSocket live tracking (NFR-1), the SQLite → PostgreSQL question, and the
+   e2e/regression harness port.
+4. ~~Make the committed test suite runnable~~ — **done 2026-10**: `pytest` + `httpx` pinned in `requirements-dev.txt`, conftest derives the DB path from `TemporaryDirectory`, and the OpenAPI contract fixture was regenerated for current FastAPI/Pydantic (53/53 green on Python 3.14).
 5. Extend coverage: port the 54-check regression script (`/tmp/opencode/test_backend.py`)
    and the Playwright e2e harness (`/tmp/opencode/e2e/live-test.js`); run against BOTH engines.
 6. Upgrade live tracking to WebSockets (NFR-1).
-7. Then Sprint 5: Driver Rating (#7) and Cancellation Policy (#18) per `PROJECT_PLAN.md` §4.
+7. Decide on `git filter-repo` to purge the demo DBs from the public repo's history.
+8. ✅ Done — Sprint 5 (Driver Rating #7, Cancellation #18) closed 2026-09-01; all five sprints complete.

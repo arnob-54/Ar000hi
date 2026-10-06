@@ -86,6 +86,33 @@ interface MatchResult {
   time_difference_mins: number | null;
 }
 
+// Raw item from /api/rides/match: either a scored match (the ride nested
+// under `ride`) or a plain ride with optional scoring fields alongside it.
+interface MatchCandidate {
+  ride?: RideInfo;
+  id?: string;
+  driver_id?: string;
+  driver_name?: string;
+  source?: string;
+  destination?: string;
+  status?: string;
+  distance_km?: number | null;
+  base_fare?: number;
+  surge_multiplier?: number;
+  total_seats?: number;
+  available_seats?: number;
+  scheduled_at?: string | null;
+  female_only?: boolean;
+  stops?: RideStop[];
+  match_score?: number;
+  score_percentage?: number;
+  reasons?: string[];
+  match_reasons?: string[];
+  pickup_distance_km?: number;
+  dropoff_distance_km?: number;
+  time_difference_mins?: number | null;
+}
+
 interface SurgeInfo {
   hour: number;
   demand: number;
@@ -184,37 +211,38 @@ export default function RidesPage() {
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  const [me, setMe] = useState<MeInfo | null>(null);
-  const [token, setToken] = useState<string | null>(null);
-
-  useEffect(() => {
-    const t = localStorage.getItem("token");
-    setToken(t);
-    const raw = localStorage.getItem("user");
-    if (raw) {
-      try {
-        setMe(JSON.parse(raw) as MeInfo);
-      } catch {
-        // ignore
-      }
+  const [me] = useState<MeInfo | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = localStorage.getItem("user");
+      return raw ? (JSON.parse(raw) as MeInfo) : null;
+    } catch {
+      return null;
     }
-  }, []);
+  });
+  const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
   const showNotice = (type: "success" | "error", text: string) => {
     setNotice({ type, text });
     setTimeout(() => setNotice(null), 5000);
   };
 
-  const reload = useCallback(async () => {
-    if (!token) return;
+  // Data fetching only — no setState here, so both the initial-load
+  // effect (below, .then style) and the event handlers (via reload)
+  // can reuse it without cascading renders.
+  const fetchRideData = useCallback(async () => {
     const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+    return Promise.all([
+      fetch(`${API}/surge/current`, { headers }).then(res => res.json()).catch(() => null),
+      fetch(`${API}/surge/schedule`, { headers }).then(res => res.json()).then(d => d?.schedule ?? []).catch(() => []),
+      fetch(`${API}/rides`, { headers }).then(res => res.json()).catch(() => ({ mine: [], available: [] })),
+      fetch(`${API}/rides/hotspots`, { headers }).then(res => res.json()).catch(() => []),
+    ]);
+  }, [token]);
+
+  const reload = useCallback(async () => {
     try {
-      const [s, sc, r, h] = await Promise.all([
-        fetch(`${API}/surge/current`, { headers }).then(res => res.json()).catch(() => null),
-        fetch(`${API}/surge/schedule`, { headers }).then(res => res.json()).then(d => d?.schedule ?? []).catch(() => []),
-        fetch(`${API}/rides`, { headers }).then(res => res.json()).catch(() => ({ mine: [], available: [] })),
-        fetch(`${API}/rides/hotspots`, { headers }).then(res => res.json()).catch(() => []),
-      ]);
+      const [s, sc, r, h] = await fetchRideData();
       setSurge(s);
       setSchedule(sc);
       setRides(r);
@@ -222,11 +250,19 @@ export default function RidesPage() {
     } catch (err) {
       console.error("Error loading ride data", err);
     }
-  }, [token]);
+  }, [fetchRideData]);
 
   useEffect(() => {
-    reload();
-  }, [reload]);
+    if (!token) return;
+    fetchRideData()
+      .then(([s, sc, r, h]) => {
+        setSurge(s);
+        setSchedule(sc);
+        setRides(r);
+        setHotspots(h);
+      })
+      .catch(err => console.error("Error loading ride data", err));
+  }, [fetchRideData, token]);
 
   const handleSmartMatch = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -250,7 +286,7 @@ export default function RidesPage() {
       const data = await res.json();
       if (res.ok) {
         const rawList = Array.isArray(data) ? data : (data.matches || []);
-        const normalized: MatchResult[] = rawList.map((item: any) => {
+        const normalized: MatchResult[] = rawList.map((item: MatchCandidate) => {
           if (item.ride) {
             return {
               ride: item.ride,
@@ -264,16 +300,16 @@ export default function RidesPage() {
           }
           return {
             ride: {
-              id: item.id,
-              driver_id: item.driver_id,
-              driver_name: item.driver_name,
-              source: item.source,
-              destination: item.destination,
-              status: item.status,
-              distance_km: item.distance_km,
-              base_fare: item.base_fare,
-              surge_multiplier: item.surge_multiplier,
-              total_seats: item.total_seats,
+              id: item.id ?? "",
+              driver_id: item.driver_id ?? "",
+              driver_name: item.driver_name ?? "",
+              source: item.source ?? "",
+              destination: item.destination ?? "",
+              status: item.status ?? "",
+              distance_km: item.distance_km ?? null,
+              base_fare: item.base_fare ?? 0,
+              surge_multiplier: item.surge_multiplier ?? 1,
+              total_seats: item.total_seats ?? 0,
               available_seats: item.available_seats,
               scheduled_at: item.scheduled_at,
               female_only: item.female_only,

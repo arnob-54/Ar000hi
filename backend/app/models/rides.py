@@ -443,7 +443,7 @@ def start_ride(ride_id: str, user_id: str):
         conn.close()
         raise DomainError(status_code=403, detail="Only the driver can start the ride")
 
-    now = dt.utcnow().isoformat()
+    now = dt.now(timezone.utc).replace(tzinfo=None).isoformat()
     conn.execute(
         "UPDATE rides SET status = 'active', started_at = ? WHERE id = ?",
         (now, ride_id)
@@ -483,7 +483,7 @@ def end_ride(ride_id: str, body: EndRideRequest, user_id: str):
 
     conn.execute(
         """UPDATE rides SET status = 'completed', distance_km = ?, ended_at = ? WHERE id = ?""",
-        (round(distance, 2), dt.utcnow().isoformat(), ride_id)
+        (round(distance, 2), dt.now(timezone.utc).replace(tzinfo=None).isoformat(), ride_id)
     )
     conn.execute(
         "UPDATE ride_passengers SET status = 'completed' WHERE ride_id = ? AND status = 'accepted'",
@@ -1099,7 +1099,7 @@ def cancel_ride(ride_id: str, body: CancelRideRequest, user_id: str):
     conn = get_db()
     ride, is_driver, seat = _load_cancellable(conn, ride_id, user_id)
     quote = _cancellation_quote(conn, ride, user_id)
-    now = dt.utcnow().isoformat()
+    now = dt.now(timezone.utc).replace(tzinfo=None).isoformat()
     reason = (body.reason or "").strip()[:300]
 
     charged = 0.0

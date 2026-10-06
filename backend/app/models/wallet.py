@@ -1,7 +1,7 @@
 """Wallet model: business rules and persistence, independent of FastAPI."""
 import os
 import uuid
-from datetime import datetime as dt
+from datetime import datetime as dt, timezone
 from app.models import ledger as ws
 from app.models.database import get_db
 from app.payments import GatewayError, get_gateway
@@ -259,5 +259,5 @@ def reconcile(user_id: str):
         "difference": round(stored - ledger, 2),
         "transaction_count": count,
         "status": "balanced" if balanced else "MISMATCH",
-        "checked_at": dt.utcnow().isoformat(),
+        "checked_at": dt.now(timezone.utc).replace(tzinfo=None).isoformat(),
     }

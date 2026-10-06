@@ -1,6 +1,6 @@
 """Complaints model: business rules and persistence, independent of FastAPI."""
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from app.models.database import get_db
 from app.schemas.complaints import CreateComplaintRequest, UpdateComplaintRequest
 from app.models.errors import DomainError
@@ -92,7 +92,7 @@ def update_complaint(complaint_id: str, body: UpdateComplaintRequest, admin_id: 
         conn.close()
         raise DomainError(status_code=404, detail="Complaint not found")
 
-    resolved_at = datetime.utcnow().isoformat() if body.status in ("resolved", "dismissed") else None
+    resolved_at = datetime.now(timezone.utc).replace(tzinfo=None).isoformat() if body.status in ("resolved", "dismissed") else None
 
     conn.execute(
         """UPDATE complaints SET status = ?, admin_notes = ?, resolved_by = ?, resolved_at = ?

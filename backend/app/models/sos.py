@@ -100,10 +100,10 @@ def resolve_sos(alert_id: str, body: dict, admin_id: str):
         conn.close()
         raise DomainError(status_code=404, detail="SOS alert not found")
 
-    from datetime import datetime
+    from datetime import datetime, timezone
     conn.execute(
         "UPDATE sos_alerts SET status = ?, resolved_at = ? WHERE id = ?",
-        (status, datetime.utcnow().isoformat(), alert_id)
+        (status, datetime.now(timezone.utc).replace(tzinfo=None).isoformat(), alert_id)
     )
     conn.commit()
     conn.close()

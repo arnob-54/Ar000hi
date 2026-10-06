@@ -60,7 +60,7 @@ Legend: ✅ done · 🔶 partial · ❌ not started
 | 10 | Ride History & Receipt Log | ✅ | Past trips list + downloadable receipt. *(Both roles — driver and rider. Receipt is print-to-PDF plus a `.txt` download, amounts read from the ledger, participants-only.)* |
 | 16 | Driver Earnings Dashboard | ✅ | Weekly earnings from completed rides, ride count, upcoming payouts. *(Reads `transactions.kind='ride_credit'` — the wallet ledger — so the dashboard and the wallet cannot disagree. 8-week bar chart bucketed in Asia/Dhaka, per-ride breakdown, and completed-but-unsettled rides surfaced separately instead of being silently dropped.)* |
 
-### Sprint 5 — Quality & Admin Controls (weeks 9-10) — 🚩 **CURRENT SPRINT**
+### Sprint 5 — Quality & Admin Controls (weeks 9-10) — ✅ **COMPLETE (4/4, closed 2026-09-01)**
 | # | Feature | Status | Acceptance criteria |
 |---|---------|--------|---------------------|
 | 7 | Driver Rating & Review | ✅ | Post-ride 1-5 star + comment; average shown on driver profile. *(One review per rider per ride, enforced by a UNIQUE index; only completed rides; participants only; reviews are never edited or deleted.)* |
@@ -77,7 +77,7 @@ Ordering rule changed: the previous list was strictly cheap → expensive, which
 Sprint-5 work ahead of unfinished Sprint-4 work. It is now **sprint-first, then cheap → expensive
 within a sprint**, so Sprint 4 closes before Sprint 5 opens.
 
-### Sprint 4 (current) — must close first
+### Sprint 4 — ✅ closed 2026-09-01 (was: must close first)
 ~~1. **Driver Earnings Dashboard (#16)**~~ — ✅ **DONE (2026-09-01).** Built on the wallet
    ledger rather than the `rides` re-aggregation originally sketched here — see §4.2.
 ~~2. **Ride History & Receipt Log (#10)**~~ — ✅ **DONE (2026-09-01).** Closes Sprint 4.
@@ -258,6 +258,11 @@ Prioritized (🔴 = fix soon, 🟡 = improve, 🟢 = nice-to-have). File referen
 > the note above — features #3, #6, #8, #14 and #19 are now implemented, and a first
 > pytest file (`backend/tests/test_campus_features.py`) is committed. §3's status column
 > and §4's build order have been re-synced with the codebase; §6.3's test items updated.
+>
+> **Update (2026-10-07, test & repair pass):** dependency pins refreshed for
+> Python 3.14, the OpenAPI contract fixture regenerated, 53/53 pytest green,
+> frontend lint clean, `datetime.utcnow()` deprecations fixed. See §6.3's
+> "2026-10 test & repair pass" block and `.arooohi-dev/SESSION.md`.
 
 ### 6.1 Security (🔴) — ✅ ALL DONE (Session 9)
 - ✅ **Hardcoded JWT secret fallback** — `auth.py`. Warns on default secret; fails fast when `DEMO_MODE != 1`.
@@ -289,15 +294,22 @@ Prioritized (🔴 = fix soon, 🟡 = improve, 🟢 = nice-to-have). File referen
 - ❌ **Duplicate participant check** — `rides.py` + `chat.py`. Extract a shared `is_ride_participant()` helper.
 - ✅ **SQLite hardening** — WAL + `busy_timeout` + FK indexes on the 6 join/lookup tables (`database.py`).
 - ❌ **`init_db()` at import time** — move to FastAPI lifespan.
-- ❌ **`requirements.txt` stale** — refresh pins to the tested versions. Also: `passlib` is listed but never imported (only referenced in an `auth.py` comment), while `bcrypt` — imported directly by `app/auth.py` and `app/database.py` — is pulled in only as a transitive extra of `passlib[bcrypt]`. Pin `bcrypt` explicitly and drop `passlib`. `pytest` and `httpx` are absent entirely.
-- 🔶 **Test suite partially committed** — `backend/tests/test_campus_features.py` is now in the repo (5 pytest cases covering #14 hotspots, #3 female-only, #19 multi-stop, #6 matching, #8 scheduled; isolated throwaway DB via `DATABASE_PATH`). Still to port: the 54-check backend regression script (`/tmp/opencode/test_backend.py`) and coverage for auth / tracking / SOS / chat / eco / complaints.
-- ❌ **Committed test suite cannot run as-is** — `requirements.txt` lists neither `pytest` nor `httpx` (required by FastAPI's `TestClient`), and `test_campus_features.py` hardcodes the POSIX path `/tmp/test_arooohi.db`, which does not resolve on Windows. Add both pins and derive the temp DB path from `tempfile.gettempdir()`.
+- 🔶 **`requirements.txt` stale** — pins refreshed 2026-10 to the verified Python 3.14 set (fastapi 0.142.2 / pydantic 2.13.5 / uvicorn 0.54.0; the old pydantic 2.9.2 pin had no cp314 wheels and failed to build). Still open: `passlib` is listed but never imported (only referenced in an `auth.py` comment), while `bcrypt` — imported directly by `app/auth.py` and `app/database.py` — is pulled in only as a transitive extra of `passlib[bcrypt]`. Pin `bcrypt` explicitly and drop `passlib`. `pytest` and `httpx` now live in `requirements-dev.txt`.
+- ✅ **Test suite partially committed** — `backend/tests/` now holds 53 pytest cases across 3 files (`test_campus_features.py`, `test_mvc_architecture.py`, `test_mvc_flows.py`) with an isolated throwaway DB via `DATABASE_PATH` + `TemporaryDirectory` (runs on any OS). Still to port: the 54-check backend regression script (`/tmp/opencode/test_backend.py`) and the Playwright e2e harness.
+- ✅ **Committed test suite cannot run as-is** — fixed 2026-10: `pytest` + `httpx` pinned in `requirements-dev.txt`, conftest derives the DB path from `TemporaryDirectory`, and the OpenAPI contract fixture was regenerated for current FastAPI/Pydantic. 53/53 green on Python 3.14.
 - ⏳ **Live e2e harness not committed (Session 10)** — Playwright suite at `/tmp/opencode/e2e/live-test.js` (45 checks, 45/45 green); port into a `backend/` or `e2e/` folder for CI.
 - ⏳ **Cross-engine e2e (Session 11 to-do)** — the UI stack is engine-agnostic (Next.js/React/Leaflet/WebSockets; no Chrome-only APIs — only standard `navigator.geolocation`/`clipboard`). Both engines are already testable via `./launch.sh --browser chrome|firefox` (chromium at `/opt/helium/chrome`, gecko = Zen via flatpak). TODO: run the Playwright suite against BOTH engines to prove it, and add the frontend feature-map as a `/demo` page.
 - ❌ **Mock notifications scattered** — consolidate into a `notifications.py` service.
 - ❌ **Hardcoded `ZONES` in `rides.py`** — move to a seeded table (unlocks #6/#14).
 - ✅ **Frontend `API` const duplicated** — centralized in `lib/api.ts` (`API`/`WS`/`API_BASE`, overridable via `NEXT_PUBLIC_API_URL`); all pages import from it. With this, switched everything to explicit IPv4 `127.0.0.1` (backend binds 127.0.0.1, CORS allows both `localhost:3000` and `127.0.0.1:3000`, tracking share URLs use `127.0.0.1`) — fixes the gecko-only failure caused by `localhost`→`::1` (IPv6) when the backend binds IPv4-only.
 - ✅ **One-command launcher** — `./launch.py` / `./launch.sh` / `launch.bat`: starts backend+frontend, renders the logo, opens the site fullscreen (F11 to toggle, `--windowed` to skip), auto-stops + WAL-checkpoints the DB when the browser closes, plus `--no-browser`/`--browser chrome|firefox`/`--detect`/`status`/`stop`. Cross-platform (pure stdlib; tested on Linux, code-reviewed for macOS/Windows).
+
+**2026-10 test & repair pass (all fixed):**
+- ✅ **Dependency pins un-installable on Python 3.14** — `pydantic==2.9.2` had no cp314 wheels (failed to build without a Rust toolchain). Pins refreshed to the verified set.
+- ✅ **Stale OpenAPI contract fixture** — `tests/fixtures/openapi_before_mvc.json` regenerated for current FastAPI/Pydantic (`contentMediaType` uploads, `ValidationError.input/ctx`, PATCH `additionalProperties`). `test_public_api_contract_is_unchanged` green again.
+- ✅ **`datetime.utcnow()` deprecations (30 sites)** — replaced with `datetime.now(timezone.utc).replace(tzinfo=None)` across 10 files; naive-UTC storage/comparison semantics preserved.
+- ✅ **Frontend lint errors (4)** — `react-hooks/set-state-in-effect` ×3 fixed with lazy `useState` initializers + a setState-free `fetchRideData()` (`.then()` pattern); `no-explicit-any` replaced with a `MatchCandidate` interface.
+- 🔶 **Demo DBs tracked in git** — `.gitignore` now blocks `*.db*`, but `backend/arooohi.db` and `Misc./arooohi.db.backup-20260731-214145` are already in the history of the public repo (`github.com/dimetsukokonoi/Ar000hi`). Purging them needs `git filter-repo` — **decision pending with Ornab**.
 
 ### 6.4 Frontend bugs & UX (🟡)
 - ✅ **Tracking page: duplicate point sources + leak on unmount** — `dashboard/page.tsx`. Single `recordPoint`, `sessionRef` guard, unmount cleanup, `headers` memoized.

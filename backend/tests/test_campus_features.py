@@ -69,7 +69,7 @@ def test_campus_hotspots():
 
 def test_female_only_mode_creation_and_joining():
     """Test 2: Female-only mode gating."""
-    future_time = (dt.utcnow() + timedelta(hours=2)).isoformat()
+    future_time = (dt.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=2)).isoformat()
 
     # Male driver attempting to create female-only ride -> 403 Forbidden
     res = client.post(
@@ -124,7 +124,7 @@ def test_female_only_mode_creation_and_joining():
 
 def test_multi_stop_ride_and_status_tracking():
     """Test 3: Multi-stop ride creation, stop joining, status tracking, and split calculation."""
-    future_time = (dt.utcnow() + timedelta(hours=3)).isoformat()
+    future_time = (dt.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=3)).isoformat()
 
     # Driver creates ride with intermediate stops
     res = client.post(
@@ -204,7 +204,7 @@ def test_multi_stop_ride_and_status_tracking():
 
 def test_smart_matching_algorithm():
     """Test 4: Smart Matching algorithm with multi-stop and class schedule scoring."""
-    future_8am = (dt.utcnow().replace(hour=8, minute=0, second=0) + timedelta(days=1)).isoformat()
+    future_8am = (dt.now(timezone.utc).replace(tzinfo=None).replace(hour=8, minute=0, second=0) + timedelta(days=1)).isoformat()
 
     # Create Ride 1: Banani to Gate 1 scheduled at 8:00 AM
     res1 = client.post(
@@ -243,7 +243,7 @@ def test_smart_matching_algorithm():
 
 def test_scheduled_ride_validation():
     """Test 5: Scheduled ride booking with past date rejection."""
-    past_time = (dt.utcnow() - timedelta(hours=1)).isoformat()
+    past_time = (dt.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=1)).isoformat()
     res = client.post(
         "/api/rides",
         json={
@@ -292,7 +292,7 @@ def test_scheduled_ride_validation():
 
 def test_badda_campus_zone_proximity_matching():
     """Test 6: Campus Zone Proximity matching on Merul Badda campus."""
-    future_time = (dt.utcnow() + timedelta(hours=4)).isoformat()
+    future_time = (dt.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=4)).isoformat()
     # Driver creates ride ending at Gate 1 (Pragati Sarani)
     res = client.post(
         "/api/rides",

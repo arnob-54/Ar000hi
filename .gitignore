@@ -2,3 +2,10 @@
 node_modules/
 __pycache__/
 .venv/
+.arooohi-dev/
+# Databases carry live demo user data — never commit new copies.
+*.db
+*.db.backup-*
+*.db-journal
+*.db-wal
+*.db-shm
