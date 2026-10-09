@@ -5,6 +5,7 @@ from datetime import datetime as dt, timedelta, timezone
 from app.models.database import get_db
 from app.models.surge import compute_current_multiplier
 from app.models import ledger as ws
+from app.models.participants import is_ride_participant
 from app.schemas.rides import CreateRideRequest, JoinRideRequest, EndRideRequest, UpdateStopStatusRequest, CancelRideRequest
 from app.models.errors import DomainError
 
@@ -809,14 +810,9 @@ def get_ride(ride_id: str, user_id: str):
     if not ride:
         conn.close()
         raise DomainError(status_code=404, detail="Ride not found")
-    if ride["driver_id"] != user_id:
-        participant = conn.execute(
-            "SELECT id FROM ride_passengers WHERE ride_id = ? AND passenger_id = ?",
-            (ride_id, user_id)
-        ).fetchone()
-        if not participant:
-            conn.close()
-            raise DomainError(status_code=403, detail="Only ride participants can view this ride")
+    if not is_ride_participant(ride_id, user_id):
+        conn.close()
+        raise DomainError(status_code=403, detail="Only ride participants can view this ride")
 
     passengers = conn.execute(
         """SELECT rp.id, rp.passenger_id, rp.seats, rp.status, rp.pickup_stop, rp.dropoff_stop, u.name AS passenger_name, u.gender AS passenger_gender
@@ -951,14 +947,9 @@ def get_ride_messages(ride_id: str, user_id: str):
         conn.close()
         raise DomainError(status_code=404, detail="Ride not found")
 
-    if ride["driver_id"] != user_id:
-        participant = conn.execute(
-            "SELECT id FROM ride_passengers WHERE ride_id = ? AND passenger_id = ? AND status IN ('accepted','completed')",
-            (ride_id, user_id)
-        ).fetchone()
-        if not participant:
-            conn.close()
-            raise DomainError(status_code=403, detail="Only ride participants can view the chat")
+    if not is_ride_participant(ride_id, user_id):
+        conn.close()
+        raise DomainError(status_code=403, detail="Only ride participants can view the chat")
 
     messages = conn.execute(
         """SELECT cm.id, cm.sender_id, cm.message, cm.created_at, u.name AS sender_name

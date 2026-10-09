@@ -3,6 +3,7 @@ Arooohi Backend — FastAPI Main Application
 """
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 import os
 
@@ -88,3 +89,15 @@ if os.getenv("DEMO_MODE", "1") == "1":
 
 
 app.include_router(health_router)
+
+
+# Browsers auto-request /favicon.ico on every server-rendered page (the
+# simulated bKash gateway). Point them at the frontend's icon rather than
+# logging a 404 in the console. Not part of the API contract — hidden from
+# the OpenAPI schema.
+_frontend_url = os.getenv("FRONTEND_PUBLIC_URL", "http://127.0.0.1:3000").rstrip("/")
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    return RedirectResponse(f"{_frontend_url}/favicon.ico", status_code=302)

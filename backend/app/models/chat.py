@@ -4,6 +4,7 @@ import time
 import threading
 from datetime import datetime, timezone
 from app.models.database import get_db
+from app.models.participants import is_ride_participant
 
 _MAX_MSGS_PER_10S = 20
 _spam: dict[str, list[float]] = {}
@@ -22,21 +23,13 @@ def _allow_message(user_id: str) -> bool:
         return True
 
 
-def _is_participant(conn, ride_id: str, user_id: str) -> bool:
-    ride = conn.execute("SELECT driver_id FROM rides WHERE id = ?", (ride_id,)).fetchone()
-    if ride and ride["driver_id"] == user_id:
-        return True
-    row = conn.execute(
-        """SELECT id FROM ride_passengers
-           WHERE ride_id = ? AND passenger_id = ? AND status IN ('accepted', 'completed')""",
-        (ride_id, user_id)
-    ).fetchone()
-    return row is not None
+
 
 
 def sender_for_ride(ride_id: str, user_id: str) -> str | None:
+    from app.models.database import get_db
     conn = get_db()
-    if not _is_participant(conn, ride_id, user_id):
+    if not is_ride_participant(ride_id, user_id):
         conn.close()
         return None
     user = conn.execute("SELECT name FROM users WHERE id = ?", (user_id,)).fetchone()

@@ -3,6 +3,9 @@ node_modules/
 __pycache__/
 .venv/
 .arooohi-dev/
+# e2e run artifacts — the harness (e2e/live-test.js) is tracked, output is not
+e2e/screenshots/
+e2e/report.json
 # Databases carry live demo user data — never commit new copies.
 *.db
 *.db.backup-*

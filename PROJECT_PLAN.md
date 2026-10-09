@@ -247,10 +247,15 @@ average with a histogram and recent comments on their Earnings page.
 
 Prioritized (🔴 = fix soon, 🟡 = improve, 🟢 = nice-to-have). File references included.
 
+> **Status (2026-10-09):** the `/tmp` harness was wiped with the temp dir and
+> rebuilt in-repo as **`e2e/live-test.js`** — **53/53 green in Helium**, 0 console
+> errors; found + fixed one real bug (gateway-page `/favicon.ico` 404 → now 302).
+> Unchecked items below are remaining/out-of-scope.
+
 > **Status (2026-07-31, Session 10 live-test pass):** all 🔴 Security (§6.1) and
 > Correctness (§6.2) items are now FIXED ✅, as are most §6.3/§6.4 items. Session 10
-> ran a full live-browser suite — **45/45 green** (harness `/tmp/opencode/e2e/`
-> `live-test.js`, screenshots committed in `demo/live-test-screenshots/`) and caught
+> ran a full live-browser suite — **45/45 green** (harness originally at
+> `/tmp/opencode/e2e/live-test.js`, screenshots committed in `demo/live-test-screenshots/`) and caught
 > one last bug, now fixed: chat spam-guard closed HTTP 403 instead of WS 4429.
 > Unchecked items below are remaining/out-of-scope.
 >
@@ -291,15 +296,15 @@ Prioritized (🔴 = fix soon, 🟡 = improve, 🟢 = nice-to-have). File referen
 
 ### 6.3 Architecture / reliability (🟡)
 - ❌ **Manual `conn.close()` everywhere** — convert to a `get_db()` FastAPI dependency/context manager.
-- ❌ **Duplicate participant check** — `rides.py` + `chat.py`. Extract a shared `is_ride_participant()` helper.
+- ✅ **Duplicate participant check** — extracted into shared `app/models/participants.py` (`is_ride_participant()`), used by `rides.py` + `chat.py` (2026-10-XX).
 - ✅ **SQLite hardening** — WAL + `busy_timeout` + FK indexes on the 6 join/lookup tables (`database.py`).
 - ❌ **`init_db()` at import time** — move to FastAPI lifespan.
 - 🔶 **`requirements.txt` stale** — pins refreshed 2026-10 to the verified Python 3.14 set (fastapi 0.142.2 / pydantic 2.13.5 / uvicorn 0.54.0; the old pydantic 2.9.2 pin had no cp314 wheels and failed to build). Still open: `passlib` is listed but never imported (only referenced in an `auth.py` comment), while `bcrypt` — imported directly by `app/auth.py` and `app/database.py` — is pulled in only as a transitive extra of `passlib[bcrypt]`. Pin `bcrypt` explicitly and drop `passlib`. `pytest` and `httpx` now live in `requirements-dev.txt`.
-- ✅ **Test suite partially committed** — `backend/tests/` now holds 53 pytest cases across 3 files (`test_campus_features.py`, `test_mvc_architecture.py`, `test_mvc_flows.py`) with an isolated throwaway DB via `DATABASE_PATH` + `TemporaryDirectory` (runs on any OS). Still to port: the 54-check backend regression script (`/tmp/opencode/test_backend.py`) and the Playwright e2e harness.
+- ✅ **Test suite partially committed** — `backend/tests/` now holds 53 pytest cases across 3 files (`test_campus_features.py`, `test_mvc_architecture.py`, `test_mvc_flows.py`) with an isolated throwaway DB via `DATABASE_PATH` + `TemporaryDirectory` (runs on any OS). The Playwright harness is now ported too (`e2e/live-test.js`, 2026-10-09); the 54-check backend regression script (`/tmp/opencode/test_backend.py`) was lost when `/tmp` was wiped — pytest covers that ground, rebuild only if a gap shows up.
 - ✅ **Committed test suite cannot run as-is** — fixed 2026-10: `pytest` + `httpx` pinned in `requirements-dev.txt`, conftest derives the DB path from `TemporaryDirectory`, and the OpenAPI contract fixture was regenerated for current FastAPI/Pydantic. 53/53 green on Python 3.14.
-- ⏳ **Live e2e harness not committed (Session 10)** — Playwright suite at `/tmp/opencode/e2e/live-test.js` (45 checks, 45/45 green); port into a `backend/` or `e2e/` folder for CI.
-- ⏳ **Cross-engine e2e (Session 11 to-do)** — the UI stack is engine-agnostic (Next.js/React/Leaflet/WebSockets; no Chrome-only APIs — only standard `navigator.geolocation`/`clipboard`). Both engines are already testable via `./launch.sh --browser chrome|firefox` (chromium at `/opt/helium/chrome`, gecko = Zen via flatpak). TODO: run the Playwright suite against BOTH engines to prove it, and add the frontend feature-map as a `/demo` page.
-- ❌ **Mock notifications scattered** — consolidate into a `notifications.py` service.
+- ✅ **Live e2e harness committed** — rebuilt in-repo as `e2e/live-test.js` (53 checks; **53/53 green in Helium**, 0 console errors, 2026-10-09). Writes `e2e/report.json` + `e2e/screenshots/` (gitignored); exits non-zero on failure. The original Session-10 suite (`/tmp/opencode/e2e/live-test.js`, 45/45) was wiped with the temp dir.
+- ⏳ **Cross-engine e2e (Session 11 to-do)** — the UI stack is engine-agnostic (Next.js/React/Leaflet/WebSockets; no Chrome-only APIs — only standard `navigator.geolocation`/`clipboard`). Both engines are already testable via `./launch.sh --browser chrome|firefox` (chromium at `/opt/helium/chrome`, gecko = Zen via flatpak). TODO: run `e2e/live-test.js` against BOTH engines to prove it (done so far on chromium/Helium only), and add the frontend feature-map as a `/demo` page.
+- ✅ **Mock notifications scattered** — consolidated into `app/models/notifications.py` (`notify_sos_alert()`, `notify_ride_cancelled()`), used by `sos.py`; delivery itself remains mocked (see §6 row in `PROJECT_PROGRESS.md`).
 - ❌ **Hardcoded `ZONES` in `rides.py`** — move to a seeded table (unlocks #6/#14).
 - ✅ **Frontend `API` const duplicated** — centralized in `lib/api.ts` (`API`/`WS`/`API_BASE`, overridable via `NEXT_PUBLIC_API_URL`); all pages import from it. With this, switched everything to explicit IPv4 `127.0.0.1` (backend binds 127.0.0.1, CORS allows both `localhost:3000` and `127.0.0.1:3000`, tracking share URLs use `127.0.0.1`) — fixes the gecko-only failure caused by `localhost`→`::1` (IPv6) when the backend binds IPv4-only.
 - ✅ **One-command launcher** — `./launch.py` / `./launch.sh` / `launch.bat`: starts backend+frontend, renders the logo, opens the site fullscreen (F11 to toggle, `--windowed` to skip), auto-stops + WAL-checkpoints the DB when the browser closes, plus `--no-browser`/`--browser chrome|firefox`/`--detect`/`status`/`stop`. Cross-platform (pure stdlib; tested on Linux, code-reviewed for macOS/Windows).
@@ -309,6 +314,7 @@ Prioritized (🔴 = fix soon, 🟡 = improve, 🟢 = nice-to-have). File referen
 - ✅ **Stale OpenAPI contract fixture** — `tests/fixtures/openapi_before_mvc.json` regenerated for current FastAPI/Pydantic (`contentMediaType` uploads, `ValidationError.input/ctx`, PATCH `additionalProperties`). `test_public_api_contract_is_unchanged` green again.
 - ✅ **`datetime.utcnow()` deprecations (30 sites)** — replaced with `datetime.now(timezone.utc).replace(tzinfo=None)` across 10 files; naive-UTC storage/comparison semantics preserved.
 - ✅ **Frontend lint errors (4)** — `react-hooks/set-state-in-effect` ×3 fixed with lazy `useState` initializers + a setState-free `fetchRideData()` (`.then()` pattern); `no-explicit-any` replaced with a `MatchCandidate` interface.
+- ✅ **Gateway-page `/favicon.ico` 404 (2026-10-09)** — found by the rebuilt e2e console-hygiene check: the browser's automatic favicon request on the server-rendered bKash page hit the backend and 404'd. `app/main.py` now answers `302` to the frontend icon (`include_in_schema=False`); pytest stayed 53/53.
 - 🔶 **Demo DBs tracked in git** — `.gitignore` now blocks `*.db*`, but `backend/arooohi.db` and `Misc./arooohi.db.backup-20260731-214145` are already in the history of the public repo (`github.com/dimetsukokonoi/Ar000hi`). Purging them needs `git filter-repo` — **decision pending with Ornab**.
 
 ### 6.4 Frontend bugs & UX (🟡)

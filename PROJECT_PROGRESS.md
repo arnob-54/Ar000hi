@@ -1,7 +1,7 @@
 # Arooohi — Progress Report
 
 > SRS source: `Misc./Arooohi_Complete_SRS_Report.pdf`. Roadmap + backlog: [`PROJECT_PLAN.md`](./PROJECT_PLAN.md).
-> Statuses: ✅ done · 🔶 partial · ❌ not started. Updated 2026-10-07 (test & repair pass; all sprints closed).
+> Statuses: ✅ done · 🔶 partial · ❌ not started. Updated 2026-10-09 (in-repo e2e harness; Helium browser test 53/53; all sprints closed).
 
 ## 1. Overall
 
@@ -54,7 +54,7 @@ sprint is outstanding, so no downstream work is blocked.
 | 4 — Payments & Earnings | 5/5 ✅ | Splitter (#5), Surge (#13), Wallet & bKash (#9), Driver Earnings (#16), Ride History (#10) — **sprint complete** |
 | 5 — Admin & Quality | 4/4 ✅ | Complaints (#17), Eco (#20), Cancellation (#18), Driver Rating (#7) — **sprint complete** |
 
-## 4. Verification evidence (2026-07-31; re-verified 2026-10-07)
+## 4. Verification evidence (2026-07-31; re-verified 2026-10-07; browser e2e re-run 2026-10-09)
 
 ### Backend
 - `import app.main` boots cleanly; `init_db()` idempotent (tables + surge seed + admin).
@@ -72,7 +72,8 @@ sprint is outstanding, so no downstream work is blocked.
 - `npm run lint` — **0 problems** (4 errors found and fixed 2026-10-07; see §5 "Test & repair pass").
 - `npx tsc --noEmit` — **clean**.
 - `npm run build` — **success, all routes compile** (21 routes).
-- Backend pytest — **53/53** on Python 3.14.7 (2026-10-07).
+- Backend pytest — **53/53** on Python 3.14.7 (2026-10-07; re-confirmed
+  2026-10-09 after the `/favicon.ico` fix).
 
 ### Runtime state (checked recent sessions)
 - **One-command launcher (Session 12):** `./launch.py` / `./launch.sh` / `launch.bat`
@@ -86,10 +87,13 @@ sprint is outstanding, so no downstream work is blocked.
 - `arooohi.db`: carries live user/test data (driver approved, completed ride,
   resolved SOS/complaint) — kept for the demo; pre-test backup at
   `Misc./arooohi.db.backup-20260731-214145`.
-- `git status` — as of 2026-10-07: HEAD `fcc3cb8`, tree clean before the
-  test & repair pass; that pass's changes (14 files: requirements, OpenAPI
-  fixture, 8 backend model files, seed script, 1 test file, 2 frontend
-  pages, `.gitignore`, docs) are **uncommitted** — see `.arooohi-dev/SESSION.md`.
+- `git status` — HEAD `fcc3cb8`; **uncommitted** (as of 2026-10-09): the
+  2026-10-07 repair pass (requirements, OpenAPI fixture, 8 backend model
+  files, seed script, 1 test file, 2 frontend pages, `.gitignore`), the
+  participant-helper + notification-service refactor (`participants.py`,
+  `notifications.py`, `rides.py`, `chat.py`), the `/favicon.ico` fix
+  (`app/main.py`), the new `e2e/` harness + `.gitignore` entries, and the
+  docs — see `.arooohi-dev/SESSION.md`.
 
 ### Live browser test (Session 10, Playwright)
 - Full end-to-end run of the live UI on both running servers: **45/45 passed,
@@ -106,6 +110,26 @@ sprint is outstanding, so no downstream work is blocked.
   `rider.live@g.bracu.ac.bd` (Rider Person), `intruder.live@g.bracu.ac.bd`
   (Nosy User); admin `admin@g.bracu.ac.bd` / `admin123`.
 
+### Live browser test (2026-10-09, harness now in-repo) — **53/53**
+- The old `/tmp` harness was wiped with the temp dir, so it was rebuilt from
+  scratch and **ported into the repo**: `e2e/live-test.js` (Playwright driving
+  Helium, `executablePath /opt/helium/chrome`, headed). Run it with
+  `node e2e/live-test.js` while `./launch.sh --no-browser` is up; it writes
+  `e2e/report.json` + `e2e/screenshots/` (both gitignored) and exits non-zero
+  on any failure.
+- **Result: 53/53 passed, 0 console errors**, covering auth (fresh
+  registration → OTP → verify), driver verification, surge/peak strip,
+  the full ride lifecycle (offer → request → accept → start → chat →
+  splitter → end + wallet settlement), bidirectional WebSocket chat,
+  bKash top-up through the hosted gateway, GPS tracking + public share link +
+  SOS, history/receipt/rating, eco/complaints/earnings, the four API security
+  gates + chat 4403 UX, and the admin panel (complaint resolve, SOS log,
+  driver list).
+- One real bug found + fixed during the runs: the backend 404'd the browser's
+  automatic `/favicon.ico` request on the server-rendered bKash gateway page
+  → now `302` to the frontend icon (`app/main.py`, hidden from OpenAPI);
+  backend tests stayed 53/53.
+
 ## 5. Recent fixes (already applied)
 
 - **Surge timezone bug**: hour lookup was UTC, seed is BD-local (UTC+6) → now `Asia/Dhaka` (`surge.py`).
@@ -117,6 +141,9 @@ sprint is outstanding, so no downstream work is blocked.
   actually reaches the client (`chat.py`).
 - **Frontend reconnect**: auto-reconnect on WS drop, no retry on 4401/4403 (`chat/[rideId]/page.tsx`).
 - **TypeScript/lint cleanup**: `any` → interfaces across 17 frontend files.
+- **Gateway-page favicon 404 (2026-10-09)**: the backend 404'd the browser's
+  automatic `/favicon.ico` on the server-rendered bKash page → now `302` to
+  the frontend icon, hidden from the OpenAPI schema (`app/main.py`).
 
 ### Session 9 hardening pass (2026-07-31) — security + correctness
 - **Auth**: default-secret fail-fast (when `DEMO_MODE!=1`); OTP hint only in DEMO_MODE;
@@ -335,18 +362,20 @@ then repairs for everything it exposed. Session log: `.arooohi-dev/SESSION.md`.
 | Real-time tracking | GPS is 5s polling, not WebSockets (NFR-1 <2s) | Reuse chat WS as template; planned in `PROJECT_PLAN.md` §4 |
 | Database | SQLite (SRS: PostgreSQL/PostGIS/MongoDB) | Accepted for demo; add WAL + FK indexes now |
 | Payments | Simulated gateway only; a live bKash client needs merchant credentials + an HTTPS callback | Routes depend on the `PaymentGateway` interface, so a live client can be added without touching routes, tables or pages |
-| Notifications | SOS + auto-share mocked (console log) | Centralize into a notifications service |
+| Notifications | SOS + auto-share delivery still mocked | ✅ Logic centralized in `app/models/notifications.py` (2026-10-XX); swapping in a real sender (SMS/push) only touches that service |
 | Verification | Manual doc review (SRS: manual/automated) | Accepted; OCR automation out of scope |
 | Mobile | Web only (SRS: React Native) | Future work |
-| Tests | Partial: `backend/tests/` (53 cases, pytest). `pytest`+`httpx` live in `requirements-dev.txt`; conftest uses `TemporaryDirectory`, so it runs on any OS | Port the 54-check regression script + Playwright e2e harness |
+| Tests | Backend: `backend/tests/` (53 cases, pytest) in `requirements-dev.txt`, `TemporaryDirectory` conftest (runs on any OS). Browser: `e2e/live-test.js` in-repo, 53 checks, verified 53/53 in Helium (2026-10-09) | The old 54-check regression script was lost when `/tmp` was wiped — rebuild from pytest only if a gap shows up; run e2e against BOTH browser engines |
 
 ## 7. Not-yet-fixed defects (tracked in PROJECT_PLAN.md §6)
 
 The 🔴 security/correctness backlog from the Session-8 audit was cleared in the
 Session-9 hardening pass (see §5). Remaining gaps are the accepted deviations in
-§6: console-mock notifications (SOS + auto-share), 5s polling tracking (NFR-1 <2s),
-a partial pytest suite (committed, but the 54-check regression script and the
-Playwright e2e harness still live only in `/tmp`), SQLite instead of
+§6: console-mock notification *delivery* (logic centralized in
+`app/models/notifications.py`, the sender itself is still a mock), 5s polling tracking (NFR-1 <2s),
+a partial pytest suite (the Playwright e2e harness is now in-repo as
+`e2e/live-test.js` and verified 53/53, but the 54-check regression script was
+lost when `/tmp` was wiped), SQLite instead of
 PostgreSQL/PostGIS, and the demo DBs purged from git history (decision pending).
 
 ## 8. Next actions (priority order)
@@ -355,11 +384,16 @@ PostgreSQL/PostGIS, and the demo DBs purged from git history (decision pending).
    cross-platform launcher + IPv4 fix (Session 12); desktop-installer attempt reverted (Session 13).
 2. ✅ Done — the Session-12 launcher + IPv4 work is committed (HEAD `fcc3cb8`).
 3. **All 20 SRS features are implemented.** What remains is non-functional:
-   WebSocket live tracking (NFR-1), the SQLite → PostgreSQL question, and the
-   e2e/regression harness port.
+   WebSocket live tracking (NFR-1), the SQLite → PostgreSQL question, and
+   running the (now in-repo) e2e harness against a second browser engine.
+   - Shared `is_ride_participant()` helper created and used across `rides.py` + `chat.py`
+   - Mock notifications service consolidated into `app/models/notifications.py`
 4. ~~Make the committed test suite runnable~~ — **done 2026-10**: `pytest` + `httpx` pinned in `requirements-dev.txt`, conftest derives the DB path from `TemporaryDirectory`, and the OpenAPI contract fixture was regenerated for current FastAPI/Pydantic (53/53 green on Python 3.14).
-5. Extend coverage: port the 54-check regression script (`/tmp/opencode/test_backend.py`)
-   and the Playwright e2e harness (`/tmp/opencode/e2e/live-test.js`); run against BOTH engines.
+5. ~~Extend coverage: port the Playwright e2e harness~~ — **done 2026-10-09**:
+   rebuilt as `e2e/live-test.js` (53 checks, Helium-verified 53/53). The
+   54-check regression script (`/tmp/opencode/test_backend.py`) was lost with
+   the temp dir — the committed pytest suite covers the same ground; rebuild
+   only if a gap appears. Remaining: run the e2e against BOTH browser engines.
 6. Upgrade live tracking to WebSockets (NFR-1).
 7. Decide on `git filter-repo` to purge the demo DBs from the public repo's history.
 8. ✅ Done — Sprint 5 (Driver Rating #7, Cancellation #18) closed 2026-09-01; all five sprints complete.
