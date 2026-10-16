@@ -328,6 +328,14 @@ Prioritized (🔴 = fix soon, 🟡 = improve, 🟢 = nice-to-have). File referen
 - ✅ **Map re-centers on every GPS tick** — `TrackingMap.tsx`. Auto-follow only until the user interacts + "🎯 Re-center" button.
 - ✅ **Track page polls after session ended** — `track/[token]/page.tsx`. Stops polling when `is_active=false`.
 
+### 6.5 Code smells (2026-10-16 audit) → separate file
+
+The full code-smell audit (all findings, file:line evidence) and the
+prioritized 4-phase fix plan now live in the dedicated file:
+**[`Code_issues(smells).md`](./Code_issues(smells).md)** — Phase 1 (quick
+wins, includes the gateway-page XSS + the `DEMO_MODE` fail-open default) is
+the recommended next small session.
+
 ## 7. Definition of Done (per feature)
 
 - Backend endpoint(s) implemented + wired in `main.py`; Pydantic request models used.

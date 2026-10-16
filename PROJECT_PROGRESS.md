@@ -1,7 +1,7 @@
 # Arooohi — Progress Report
 
 > SRS source: `Misc./Arooohi_Complete_SRS_Report.pdf`. Roadmap + backlog: [`PROJECT_PLAN.md`](./PROJECT_PLAN.md).
-> Statuses: ✅ done · 🔶 partial · ❌ not started. Updated 2026-10-09 (in-repo e2e harness; Helium browser test 53/53; all sprints closed).
+> Statuses: ✅ done · 🔶 partial · ❌ not started. Updated 2026-10-16 (code-smell audit → plan; Helium e2e 53/53; all sprints closed).
 
 ## 1. Overall
 
@@ -366,6 +366,7 @@ then repairs for everything it exposed. Session log: `.arooohi-dev/SESSION.md`.
 | Verification | Manual doc review (SRS: manual/automated) | Accepted; OCR automation out of scope |
 | Mobile | Web only (SRS: React Native) | Future work |
 | Tests | Backend: `backend/tests/` (53 cases, pytest) in `requirements-dev.txt`, `TemporaryDirectory` conftest (runs on any OS). Browser: `e2e/live-test.js` in-repo, 53 checks, verified 53/53 in Helium (2026-10-09) | The old 54-check regression script was lost when `/tmp` was wiped — rebuild from pytest only if a gap shows up; run e2e against BOTH browser engines |
+| Code-smell backlog | Verified smells documented with file:line evidence (XSS on demo gateway, `DEMO_MODE` fail-open, god files, no shared API client, TOCTOU join, in-memory state, …) | 4-phase fix plan in [`Code_issues(smells).md`](./Code_issues(smells).md) — Phase 1 first |
 
 ## 7. Not-yet-fixed defects (tracked in PROJECT_PLAN.md §6)
 
@@ -397,3 +398,7 @@ PostgreSQL/PostGIS, and the demo DBs purged from git history (decision pending).
 6. Upgrade live tracking to WebSockets (NFR-1).
 7. Decide on `git filter-repo` to purge the demo DBs from the public repo's history.
 8. ✅ Done — Sprint 5 (Driver Rating #7, Cancellation #18) closed 2026-09-01; all five sprints complete.
+9. Work the code-smell fix plan in [`Code_issues(smells).md`](./Code_issues(smells).md):
+   start with Phase 1 (quick wins — includes the reflected XSS on the demo
+   gateway page and the `DEMO_MODE` fail-open default) before any wider
+   deployment; then Phase 2/3 structure sessions.
