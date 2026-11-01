@@ -35,6 +35,7 @@ export default function RideChatPage() {
   });
   const [connected, setConnected] = useState(false);
   const [fatalError, setFatalError] = useState("");
+  const [notice, setNotice] = useState("");
   const wsRef = useRef<WebSocket | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
@@ -74,6 +75,11 @@ export default function RideChatPage() {
         try {
           const msg = JSON.parse(ev.data);
           if (msg.type === "rate_limited") return; // server throttle hint; keep UX calm
+          if (msg.type === "message_rejected") {
+            // Over-long message: the server rejected it instead of truncating.
+            setNotice(msg.error || "Message could not be sent.");
+            return;
+          }
           setMessages(prev => [...prev, msg]);
         } catch (err) {
           console.error("Bad WS message:", err);
@@ -114,6 +120,12 @@ export default function RideChatPage() {
     e.preventDefault();
     const trimmed = text.trim();
     if (!trimmed || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    if (trimmed.length > 500) {
+      // Mirror the server rule so the sender is told before the round-trip.
+      setNotice("Messages are limited to 500 characters.");
+      return;
+    }
+    setNotice("");
     wsRef.current.send(JSON.stringify({ message: trimmed }));
     setText("");
   };
@@ -168,15 +180,21 @@ export default function RideChatPage() {
           <div ref={bottomRef} />
         </div>
 
-        <form onSubmit={sendMessage} style={{ display: "flex", gap: 12, padding: 16, borderTop: "1px solid var(--surface-border)" }}>
+        <form onSubmit={sendMessage} style={{ display: "flex", gap: 12, padding: 16, borderTop: "1px solid var(--surface-border)", flexWrap: "wrap" }}>
+          {notice && (
+            <div className="error-text" role="alert" style={{ flexBasis: "100%" }}>
+              {notice}
+            </div>
+          )}
           <input
             className="input"
             placeholder="Type a message..."
+            data-testid="chat-input"
             value={text}
             onChange={e => setText(e.target.value)}
             autoFocus
           />
-          <button type="submit" className="btn btn-primary" disabled={!connected}>Send</button>
+          <button type="submit" className="btn btn-primary" data-testid="chat-send" disabled={!connected}>Send</button>
         </form>
       </div>
       )}

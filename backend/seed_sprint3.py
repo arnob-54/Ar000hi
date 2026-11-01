@@ -6,6 +6,8 @@ from datetime import datetime as dt, timedelta, timezone
 import sqlite3
 import os
 import sys
+# The demo seed relies on demo-mode auth helpers; DEMO_MODE is fail-closed now.
+os.environ.setdefault("DEMO_MODE", "1")
 # Add the parent directory to sys.path to import app modules
 
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))

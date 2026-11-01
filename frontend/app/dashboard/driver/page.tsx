@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 
 import { API } from "@/lib/api";
+import { DRIVER_STATUS_BADGE, badgeClass } from "@/lib/badges";
 
 interface DriverProfile {
   vehicle_type?: string;
@@ -69,10 +70,10 @@ export default function DriverVerificationPage() {
     }
   };
 
-  const statusBadge = {
-    pending: { className: "badge-warning", text: "⏳ Pending Review" },
-    approved: { className: "badge-success", text: "✅ Approved" },
-    rejected: { className: "badge-danger", text: "❌ Rejected" },
+  const statusLabel: Record<string, string> = {
+    pending: "⏳ Pending Review",
+    approved: "✅ Approved",
+    rejected: "❌ Rejected",
   };
 
   return (
@@ -87,8 +88,8 @@ export default function DriverVerificationPage() {
         <div className="glass-card" style={{ padding: 24, marginBottom: 24 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
             <span style={{ fontWeight: 600 }}>Verification Status:</span>
-            <span className={`badge ${statusBadge[status as keyof typeof statusBadge]?.className || "badge-info"}`}>
-              {statusBadge[status as keyof typeof statusBadge]?.text || status}
+            <span className={`badge ${badgeClass(DRIVER_STATUS_BADGE, status)}`}>
+              {statusLabel[status] || status}
             </span>
           </div>
           {profile?.admin_notes && (

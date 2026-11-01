@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
 import { API } from "@/lib/api";
+import { fmtMoney } from "@/lib/format";
 
 // Feature 16: Driver Earnings Dashboard
 //
@@ -83,8 +84,6 @@ interface RideRow {
   shortfall: number;
 }
 
-const taka = (n: number) =>
-  "৳" + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 function StatTile({ label, value, sub, tone }: {
   label: string; value: string; sub?: string; tone?: "good" | "warn";
@@ -190,21 +189,21 @@ export default function EarningsPage() {
       <div className="stats-grid" style={{ marginBottom: 20 }}>
         <StatTile
           label="Total Earned"
-          value={taka(summary.total_earned)}
-          sub={`${summary.rides_paid} paid ride${summary.rides_paid === 1 ? "" : "s"} · avg ${taka(summary.avg_per_ride)}`}
+          value={fmtMoney(summary.total_earned)}
+          sub={`${summary.rides_paid} paid ride${summary.rides_paid === 1 ? "" : "s"} · avg ${fmtMoney(summary.avg_per_ride)}`}
           tone="good"
         />
         <StatTile
           label="Ready to Cash Out"
-          value={taka(summary.available_payout)}
+          value={fmtMoney(summary.available_payout)}
           sub="Current wallet balance"
         />
         <StatTile
           label="This Week"
-          value={taka(summary.this_week)}
+          value={fmtMoney(summary.this_week)}
           sub={
             summary.last_week > 0
-              ? `${up ? "▲" : "▼"} ${Math.abs(summary.change_pct)}% vs last week (${taka(summary.last_week)})`
+              ? `${up ? "▲" : "▼"} ${Math.abs(summary.change_pct)}% vs last week (${fmtMoney(summary.last_week)})`
               : "No earnings last week"
           }
         />
@@ -223,7 +222,7 @@ export default function EarningsPage() {
           style={{ padding: "14px 18px", marginBottom: 20, borderLeft: "3px solid var(--warning)" }}
         >
           <div style={{ color: "var(--warning)", fontWeight: 700, fontSize: "0.88rem", marginBottom: 4 }}>
-            ⚠️ {taka(summary.unsettled_value)} uncollected across {summary.unsettled_rides} ride
+            ⚠️ {fmtMoney(summary.unsettled_value)} uncollected across {summary.unsettled_rides} ride
             {summary.unsettled_rides === 1 ? "" : "s"}
           </div>
           <div style={{ fontSize: "0.78rem", color: "var(--text-secondary)", lineHeight: 1.6 }}>
@@ -349,7 +348,7 @@ export default function EarningsPage() {
                   <tr key={w.period_start}>
                     <td>{w.label}{w.is_current && (period === "week" ? " (current)" : " (today)")}</td>
                     <td style={{ textAlign: "right" }}>{w.rides}</td>
-                    <td style={{ textAlign: "right", fontWeight: 600 }}>{taka(w.amount)}</td>
+                    <td style={{ textAlign: "right", fontWeight: 600 }}>{fmtMoney(w.amount)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -415,7 +414,7 @@ export default function EarningsPage() {
                             {period === "week" ? `Week of ${w.label}` : w.label}
                           </div>
                           <div style={{ fontSize: "0.95rem", fontWeight: 700, color: "var(--text-primary)" }}>
-                            {taka(w.amount)}
+                            {fmtMoney(w.amount)}
                           </div>
                           <div style={{ fontSize: "0.7rem", color: "var(--text-tertiary)" }}>
                             {w.rides} ride{w.rides === 1 ? "" : "s"}
@@ -467,7 +466,7 @@ export default function EarningsPage() {
                         <span className="badge badge-warning" style={{ marginLeft: 8 }}>⚠️ unpaid</span>
                       ) : r.shortfall > 0 ? (
                         <span className="badge badge-warning" style={{ marginLeft: 8 }}>
-                          ⚠️ short {taka(r.shortfall)}
+                          ⚠️ short {fmtMoney(r.shortfall)}
                         </span>
                       ) : null}
                       {r.distance_km ? (
@@ -477,15 +476,15 @@ export default function EarningsPage() {
                       ) : null}
                     </td>
                     <td style={{ textAlign: "right", color: "var(--text-secondary)" }}>{r.passengers}</td>
-                    <td style={{ textAlign: "right", color: "var(--text-secondary)" }}>{taka(r.gross)}</td>
+                    <td style={{ textAlign: "right", color: "var(--text-secondary)" }}>{fmtMoney(r.gross)}</td>
                     {summary.total_platform_fees > 0 && (
                       <td style={{ textAlign: "right", color: "var(--text-tertiary)" }}>
-                        {r.platform_fee ? "−" + taka(r.platform_fee) : "—"}
+                        {r.platform_fee ? "−" + fmtMoney(r.platform_fee) : "—"}
                       </td>
                     )}
                     <td style={{ textAlign: "right", fontWeight: 700,
                                  color: r.settled ? "var(--success)" : "var(--text-tertiary)" }}>
-                      {r.settled ? taka(r.net) : "—"}
+                      {r.settled ? fmtMoney(r.net) : "—"}
                     </td>
                     <td style={{ fontSize: "0.75rem", color: "var(--text-tertiary)", whiteSpace: "nowrap" }}>
                       {r.when ? new Date(r.when.replace(" ", "T") + "Z").toLocaleDateString() : "—"}

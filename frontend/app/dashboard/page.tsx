@@ -1,8 +1,8 @@
 "use client";
-import { useEffect, useState, useRef, useCallback, useMemo } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import dynamic from "next/dynamic";
 
-import { API } from "@/lib/api";
+import { apiFetch, getToken } from "@/lib/client";
 
 interface SessionInfo {
   session_id: string;
@@ -40,11 +40,7 @@ export default function DashboardPage() {
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const sessionRef = useRef<SessionInfo | null>(null);
 
-  const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
-  const headers = useMemo(
-    () => ({ Authorization: `Bearer ${token}`, "Content-Type": "application/json" }),
-    [token]
-  );
+  const token = getToken();
 
   // Cleanup: never leave the geolocation watch / demo interval running on unmount.
   useEffect(() => {
@@ -63,13 +59,12 @@ export default function DashboardPage() {
       return next.length > 300 ? next.slice(-300) : next; // cap client buffer
     });
     try {
-      await fetch(`${API}/tracking/point`, {
+      await apiFetch("/tracking/point", {
         method: "POST",
-        headers,
-        body: JSON.stringify({ session_id: sessionRef.current.session_id, lat: pos.lat, lng: pos.lng }),
+        body: { session_id: sessionRef.current.session_id, lat: pos.lat, lng: pos.lng },
       });
     } catch { /* best-effort point upload */ }
-  }, [headers]);
+  }, []);
 
   // Get current position
   useEffect(() => {
@@ -84,16 +79,19 @@ export default function DashboardPage() {
   // Check for existing active session
   useEffect(() => {
     if (!token) return;
-    const h = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
-    fetch(`${API}/tracking/active`, { headers: h }).then(r => r.json()).then(data => {
-      if (data.session) { setSession(data.session); sessionRef.current = data.session; }
-    }).catch(() => {});
+    apiFetch<{ session?: SessionInfo }>("/tracking/active")
+      .then((data) => {
+        if (data.session) {
+          setSession(data.session);
+          sessionRef.current = data.session;
+        }
+      })
+      .catch(() => {});
   }, [token]);
 
   const startTracking = async () => {
     try {
-      const res = await fetch(`${API}/tracking/session`, { method: "POST", headers });
-      const data = await res.json();
+      const data = await apiFetch<SessionInfo>("/tracking/session", { method: "POST" });
       setSession(data);
       sessionRef.current = data;
       setTracking(true);
@@ -101,10 +99,9 @@ export default function DashboardPage() {
 
       // Ornab (Feature 12): auto-share ride details to trusted contacts when tracking starts
       if (data.share_url) {
-        fetch(`${API}/contacts/auto-share`, {
+        apiFetch("/contacts/auto-share", {
           method: "POST",
-          headers,
-          body: JSON.stringify({ share_url: data.share_url, session_id: data.session_id }),
+          body: { share_url: data.share_url, session_id: data.session_id },
         }).catch(() => {});
       }
 
@@ -146,7 +143,10 @@ export default function DashboardPage() {
       intervalRef.current = null;
     }
     if (sessionRef.current) {
-      await fetch(`${API}/tracking/session/${sessionRef.current.session_id || sessionRef.current.id}/stop`, { method: "POST", headers }).catch(() => {});
+      await apiFetch(
+        `/tracking/session/${sessionRef.current.session_id || sessionRef.current.id}/stop`,
+        { method: "POST" }
+      ).catch(() => {});
     }
     sessionRef.current = null;
     setTracking(false);
@@ -164,12 +164,14 @@ export default function DashboardPage() {
   const triggerSOS = async () => {
     if (!currentPos) return;
     try {
-      const res = await fetch(`${API}/sos/trigger`, {
+      const data = await apiFetch<SosResult>("/sos/trigger", {
         method: "POST",
-        headers,
-        body: JSON.stringify({ lat: currentPos.lat, lng: currentPos.lng, session_id: sessionRef.current?.session_id || session?.session_id }),
+        body: {
+          lat: currentPos.lat,
+          lng: currentPos.lng,
+          session_id: sessionRef.current?.session_id || session?.session_id,
+        },
       });
-      const data = await res.json();
       setSosResult(data);
       setSosSent(true);
     } catch (err) {

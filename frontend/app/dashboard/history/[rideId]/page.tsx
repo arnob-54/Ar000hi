@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 
 import { API } from "@/lib/api";
+import { fmtMoney } from "@/lib/format";
 
 // Feature 10: the receipt document itself.
 //
@@ -57,9 +58,6 @@ interface Receipt {
   expected_amount: number;
   breakdown: Share[];
 }
-
-const taka = (n: number) =>
-  "৳" + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 // Timestamps arrive in two shapes: SQLite's naive-UTC "YYYY-MM-DD HH:MM:SS"
 // (needs a Z) and offset-aware ISO like "...+06:00" (must NOT get one). Appending
@@ -160,21 +158,21 @@ export default function ReceiptPage() {
     if (r.distance_km) L.push(`  Distance  : ${r.distance_km.toFixed(1)} km`);
     L.push("");
     L.push("FARE");
-    L.push(`  Base fare        : ${taka(r.fare.base_fare)}`);
+    L.push(`  Base fare        : ${fmtMoney(r.fare.base_fare)}`);
     L.push(`  Surge multiplier : x${r.fare.surge_multiplier}`);
-    L.push(`  Ride total       : ${taka(r.fare.total)}`);
-    if (r.fare.platform_fee > 0) L.push(`  Platform fee     : -${taka(r.fare.platform_fee)}`);
+    L.push(`  Ride total       : ${fmtMoney(r.fare.total)}`);
+    if (r.fare.platform_fee > 0) L.push(`  Platform fee     : -${fmtMoney(r.fare.platform_fee)}`);
     L.push("");
     L.push("SPLIT");
     r.breakdown.forEach(b =>
-      L.push(`  ${b.name} (${b.seats} seat${b.seats === 1 ? "" : "s"}) : ${taka(b.share)}`));
+      L.push(`  ${b.name} (${b.seats} seat${b.seats === 1 ? "" : "s"}) : ${fmtMoney(b.share)}`));
     L.push("");
-    L.push(`${r.your_line_label.toUpperCase()} : ${taka(r.paid ? r.your_amount : r.expected_amount)}`);
+    L.push(`${r.your_line_label.toUpperCase()} : ${fmtMoney(r.paid ? r.your_amount : r.expected_amount)}`);
     L.push(`Payment method : ${r.payment_method}`);
     if (r.transaction_id) L.push(`Transaction    : ${r.transaction_id}`);
     if (!r.paid) L.push("NOTE: this fare was never settled - the amount above is what was owed.");
     else if (!r.fully_paid)
-      L.push(`NOTE: partially settled - ${taka(r.expected_amount)} owed, ${taka(r.shortfall)} never received.`);
+      L.push(`NOTE: partially settled - ${fmtMoney(r.expected_amount)} owed, ${fmtMoney(r.shortfall)} never received.`);
     L.push("");
     L.push("=".repeat(46));
     L.push("Demo system — no real currency was transferred.");
@@ -302,10 +300,10 @@ export default function ReceiptPage() {
         {/* Fare */}
         <h3 style={{ fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.08em",
                      color: "var(--text-tertiary)", marginBottom: 8 }}>Fare</h3>
-        <Row label="Base fare" value={taka(r.fare.base_fare)} />
+        <Row label="Base fare" value={fmtMoney(r.fare.base_fare)} />
         <Row label="Surge multiplier" value={`×${r.fare.surge_multiplier}`} />
-        <Row label="Ride total" value={taka(r.fare.total)} />
-        {r.fare.platform_fee > 0 && <Row label="Platform fee" value={`−${taka(r.fare.platform_fee)}`} />}
+        <Row label="Ride total" value={fmtMoney(r.fare.total)} />
+        {r.fare.platform_fee > 0 && <Row label="Platform fee" value={`−${fmtMoney(r.fare.platform_fee)}`} />}
 
         {/* Split */}
         <h3 style={{ fontSize: "0.72rem", textTransform: "uppercase", letterSpacing: "0.08em",
@@ -315,21 +313,21 @@ export default function ReceiptPage() {
         {r.breakdown.map(b => (
           <Row key={b.passenger_id}
                label={`${b.name} · ${b.seats} seat${b.seats === 1 ? "" : "s"}`}
-               value={taka(b.share)} />
+               value={fmtMoney(b.share)} />
         ))}
 
         <div className="rule" style={{ borderTop: "2px solid var(--surface-border)", margin: "16px 0" }} />
 
-        <Row label={r.your_line_label} value={taka(shown)} strong />
+        <Row label={r.your_line_label} value={fmtMoney(shown)} strong />
 
         {!r.fully_paid && (
           <div style={{ marginTop: 12, padding: "10px 14px", borderLeft: "3px solid var(--warning)",
                         fontSize: "0.78rem", color: "var(--text-secondary)", lineHeight: 1.6 }}>
             {r.paid ? (
               <>
-                <strong>Partially settled.</strong> {taka(r.expected_amount)} was owed but only{" "}
-                {taka(r.your_amount)} was received — a shortfall of{" "}
-                <strong>{taka(r.shortfall)}</strong>, because one or more passengers could not
+                <strong>Partially settled.</strong> {fmtMoney(r.expected_amount)} was owed but only{" "}
+                {fmtMoney(r.your_amount)} was received — a shortfall of{" "}
+                <strong>{fmtMoney(r.shortfall)}</strong>, because one or more passengers could not
                 cover their share. Only the amount actually received counts towards your wallet
                 and earnings.
               </>

@@ -1,120 +1,113 @@
 """Tracking model: business rules and persistence, independent of FastAPI."""
 import uuid
-from app.models.database import get_db
+from app.models.database import db_session
 from app.schemas.tracking import TrackingPointRequest, StartSessionRequest
 from app.models.errors import DomainError
 
 
 def start_tracking_session(user_id: str):
     """Start a new GPS tracking session."""
-    conn = get_db()
+    with db_session() as conn:
 
-    # Deactivate any existing active sessions for this user
-    conn.execute(
-        "UPDATE tracking_sessions SET is_active = 0 WHERE user_id = ? AND is_active = 1",
-        (user_id,)
-    )
+        # Deactivate any existing active sessions for this user
+        conn.execute(
+            "UPDATE tracking_sessions SET is_active = 0 WHERE user_id = ? AND is_active = 1",
+            (user_id,)
+        )
 
-    session_id = str(uuid.uuid4())
-    share_token = uuid.uuid4().hex  # 32-hex (128 bits) — no longer a weak 12-char token
+        session_id = str(uuid.uuid4())
+        share_token = uuid.uuid4().hex  # 32-hex (128 bits) — no longer a weak 12-char token
 
-    conn.execute(
-        "INSERT INTO tracking_sessions (id, user_id, share_token) VALUES (?, ?, ?)",
-        (session_id, user_id, share_token)
-    )
-    conn.commit()
-    conn.close()
+        conn.execute(
+            "INSERT INTO tracking_sessions (id, user_id, share_token) VALUES (?, ?, ?)",
+            (session_id, user_id, share_token)
+        )
+        conn.commit()
 
-    return {
-        "session_id": session_id,
-        "share_token": share_token,
-        "share_url": f"http://127.0.0.1:3000/track/{share_token}",
-        "message": "Tracking session started"
-    }
+        return {
+            "session_id": session_id,
+            "share_token": share_token,
+            "share_url": f"http://127.0.0.1:3000/track/{share_token}",
+            "message": "Tracking session started"
+        }
 
 
 def add_tracking_point(body: TrackingPointRequest, user_id: str):
     """Add a GPS coordinate point to an active tracking session."""
-    conn = get_db()
+    with db_session() as conn:
 
-    # Verify session belongs to user and is active
-    session = conn.execute(
-        "SELECT * FROM tracking_sessions WHERE id = ? AND user_id = ? AND is_active = 1",
-        (body.session_id, user_id)
-    ).fetchone()
+        # Verify session belongs to user and is active
+        session = conn.execute(
+            "SELECT * FROM tracking_sessions WHERE id = ? AND user_id = ? AND is_active = 1",
+            (body.session_id, user_id)
+        ).fetchone()
 
-    if not session:
-        conn.close()
-        raise DomainError(status_code=404, detail="Active tracking session not found")
+        if not session:
+            raise DomainError(status_code=404, detail="Active tracking session not found")
 
-    point_id = str(uuid.uuid4())
-    conn.execute(
-        "INSERT INTO tracking_points (id, session_id, user_id, lat, lng) VALUES (?, ?, ?, ?, ?)",
-        (point_id, body.session_id, user_id, body.lat, body.lng)
-    )
-    conn.commit()
-    conn.close()
+        point_id = str(uuid.uuid4())
+        conn.execute(
+            "INSERT INTO tracking_points (id, session_id, user_id, lat, lng) VALUES (?, ?, ?, ?, ?)",
+            (point_id, body.session_id, user_id, body.lat, body.lng)
+        )
+        conn.commit()
 
-    return {"message": "Point recorded", "point_id": point_id}
+        return {"message": "Point recorded", "point_id": point_id}
 
 
 def get_session_points(session_id: str, user_id: str):
     """Get all tracking points for a session (owner only — fix: was leaking any session)."""
-    conn = get_db()
-    session = conn.execute(
-        "SELECT id FROM tracking_sessions WHERE id = ? AND user_id = ?",
-        (session_id, user_id)
-    ).fetchone()
-    if not session:
-        conn.close()
-        raise DomainError(status_code=404, detail="Tracking session not found")
+    with db_session() as conn:
+        session = conn.execute(
+            "SELECT id FROM tracking_sessions WHERE id = ? AND user_id = ?",
+            (session_id, user_id)
+        ).fetchone()
+        if not session:
+            raise DomainError(status_code=404, detail="Tracking session not found")
 
-    points = conn.execute(
-        "SELECT * FROM tracking_points WHERE session_id = ? ORDER BY created_at ASC",
-        (session_id,)
-    ).fetchall()
-    conn.close()
+        points = conn.execute(
+            "SELECT * FROM tracking_points WHERE session_id = ? ORDER BY created_at ASC",
+            (session_id,)
+        ).fetchall()
 
-    return [
-        {"id": p["id"], "lat": p["lat"], "lng": p["lng"], "created_at": p["created_at"]}
-        for p in points
-    ]
+        return [
+            {"id": p["id"], "lat": p["lat"], "lng": p["lng"], "created_at": p["created_at"]}
+            for p in points
+        ]
 
 
 def get_shared_tracking(share_token: str):
     """Public: Get tracking data via share token (for trusted contacts)."""
-    conn = get_db()
+    with db_session() as conn:
 
-    session = conn.execute(
-        "SELECT * FROM tracking_sessions WHERE share_token = ?",
-        (share_token,)
-    ).fetchone()
+        session = conn.execute(
+            "SELECT * FROM tracking_sessions WHERE share_token = ?",
+            (share_token,)
+        ).fetchone()
 
-    if not session:
-        conn.close()
-        raise DomainError(status_code=404, detail="Tracking session not found")
+        if not session:
+            raise DomainError(status_code=404, detail="Tracking session not found")
 
-    # Get user name (not email — privacy)
-    user = conn.execute("SELECT name FROM users WHERE id = ?", (session["user_id"],)).fetchone()
+        # Get user name (not email — privacy)
+        user = conn.execute("SELECT name FROM users WHERE id = ?", (session["user_id"],)).fetchone()
 
-    # Get latest points
-    points = conn.execute(
-        """SELECT lat, lng, created_at FROM tracking_points
-           WHERE session_id = ? ORDER BY created_at ASC""",
-        (session["id"],)
-    ).fetchall()
-    conn.close()
+        # Get latest points
+        points = conn.execute(
+            """SELECT lat, lng, created_at FROM tracking_points
+               WHERE session_id = ? ORDER BY created_at ASC""",
+            (session["id"],)
+        ).fetchall()
 
-    return {
-        "user_name": user["name"] if user else "Unknown",
-        "is_active": bool(session["is_active"]),
-        "started_at": session["created_at"],
-        "points": [
-            {"lat": p["lat"], "lng": p["lng"], "created_at": p["created_at"]}
-            for p in points
-        ],
-        "latest": {"lat": points[-1]["lat"], "lng": points[-1]["lng"]} if points else None,
-    }
+        return {
+            "user_name": user["name"] if user else "Unknown",
+            "is_active": bool(session["is_active"]),
+            "started_at": session["created_at"],
+            "points": [
+                {"lat": p["lat"], "lng": p["lng"], "created_at": p["created_at"]}
+                for p in points
+            ],
+            "latest": {"lat": points[-1]["lat"], "lng": points[-1]["lng"]} if points else None,
+        }
 
 
 def stop_tracking_session(session_id: str, user_id: str):
@@ -123,35 +116,33 @@ def stop_tracking_session(session_id: str, user_id: str):
     Improvement note:
     - Keeps the shared live GPS tracking flow aligned with the expedition of ride monitoring and trusted-contact sharing.
     """
-    conn = get_db()
-    result = conn.execute(
-        "UPDATE tracking_sessions SET is_active = 0 WHERE id = ? AND user_id = ? AND is_active = 1",
-        (session_id, user_id)
-    )
-    conn.commit()
-    conn.close()
-    if result.rowcount == 0:
-        raise DomainError(status_code=404, detail="Tracking session not found")
-    return {"message": "Tracking session stopped"}
+    with db_session() as conn:
+        result = conn.execute(
+            "UPDATE tracking_sessions SET is_active = 0 WHERE id = ? AND user_id = ? AND is_active = 1",
+            (session_id, user_id)
+        )
+        conn.commit()
+        if result.rowcount == 0:
+            raise DomainError(status_code=404, detail="Tracking session not found")
+        return {"message": "Tracking session stopped"}
 
 
 def get_active_session(user_id: str):
     """Get the user's currently active tracking session, if any."""
-    conn = get_db()
-    session = conn.execute(
-        "SELECT * FROM tracking_sessions WHERE user_id = ? AND is_active = 1",
-        (user_id,)
-    ).fetchone()
-    conn.close()
+    with db_session() as conn:
+        session = conn.execute(
+            "SELECT * FROM tracking_sessions WHERE user_id = ? AND is_active = 1",
+            (user_id,)
+        ).fetchone()
 
-    if not session:
-        return {"session": None}
+        if not session:
+            return {"session": None}
 
-    return {
-        "session": {
-            "id": session["id"],
-            "share_token": session["share_token"],
-            "share_url": f"http://127.0.0.1:3000/track/{session['share_token']}",
-            "created_at": session["created_at"],
+        return {
+            "session": {
+                "id": session["id"],
+                "share_token": session["share_token"],
+                "share_url": f"http://127.0.0.1:3000/track/{session['share_token']}",
+                "created_at": session["created_at"],
+            }
         }
-    }

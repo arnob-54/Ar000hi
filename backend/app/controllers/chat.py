@@ -6,12 +6,13 @@ Only the ride driver and accepted passengers may join a conversation.
 
 Improvements in this pass:
 - Per-user message rate limiting (spam guard) — max N messages per second.
-- Message length capped at 500 chars.
+- Messages longer than 500 chars are rejected with an inline error (not truncated).
 """
 
 import json
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from app.models import chat as model
+from app.models.errors import DomainError
 from app.models.identity import decode_token
 
 router = APIRouter()
@@ -97,7 +98,15 @@ async def ride_chat_ws(websocket: WebSocket, ride_id: str):
                 await websocket.close(code=4429)
                 break
 
-            payload = model.save_message(ride_id, user_id, sender_name, message)
+            try:
+                payload = model.save_message(ride_id, user_id, sender_name, message)
+            except DomainError as exc:
+                # Keep the socket open and tell the sender why (the model also
+                # rejects over-long text, so this is the only user-facing path).
+                await websocket.send_text(
+                    json.dumps({"type": "message_rejected", "error": exc.detail})
+                )
+                continue
             await manager.broadcast(ride_id, payload)
         manager.disconnect(ride_id, websocket)
     except WebSocketDisconnect:

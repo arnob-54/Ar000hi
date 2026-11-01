@@ -3,7 +3,9 @@
 > SRS source: `Misc./Arooohi_Complete_SRS_Report.pdf` (Section 7 = Development Plan).
 > Companion doc: [`PROJECT_PROGRESS.md`](./PROJECT_PROGRESS.md) for current status.
 > This file is commit-friendly and team-facing. Private working notes live in `.arooohi-dev/` (git-ignored).
-> **Status column last synced with the codebase: 2026-09-01** (Sprint 4 in progress).
+> **Status column last synced with the codebase: 2026-10-30** (all SRS features
+> and code-smell Phases 1–3 complete; Phase 4 deferred to the Postgres/Redis
+> migration).
 
 ## 1. Purpose
 
@@ -17,7 +19,7 @@ known code-quality backlog that must be addressed alongside feature work.
 
 | Layer | SRS (planned) | Actual | Deviation |
 |-------|---------------|--------|-----------|
-| Backend | FastAPI (Python) | FastAPI 0.115 + uvicorn | ✔ |
+| Backend | FastAPI (Python) | FastAPI 0.142 + uvicorn 0.54 (Python 3.14) | ✔ |
 | Database | PostgreSQL (PostGIS) / MongoDB | SQLite (stdlib `sqlite3`) | ⚠ SQLite only — no geospatial (PostGIS). Fine for demo; blocks zone-matching/heatmaps at scale. |
 | Frontend | React.js (web) + React Native (mobile) | Next.js 16 (web only) | ⚠ Mobile is out of scope for now |
 | Auth | — | JWT (python-jose HS256) + bcrypt | ✔ |
@@ -295,17 +297,18 @@ Prioritized (🔴 = fix soon, 🟡 = improve, 🟢 = nice-to-have). File referen
   code documented in `API.md` actually propagates (`chat.py`).
 
 ### 6.3 Architecture / reliability (🟡)
-- ❌ **Manual `conn.close()` everywhere** — convert to a `get_db()` FastAPI dependency/context manager.
-- ✅ **Duplicate participant check** — extracted into shared `app/models/participants.py` (`is_ride_participant()`), used by `rides.py` + `chat.py` (2026-10-XX).
+- ✅ **Manual `conn.close()` everywhere** — replaced by `db_session()` (commit on success, rollback + close on error) in `app/models/database.py`; only `database.init_db()` and `participants.is_ride_participant()` manage their own connection (2026-10-30).
+- ✅ **Duplicate participant check** — extracted into shared `app/models/participants.py` (`is_ride_participant()`), used by `rides.py` + `chat.py` (2026-10-30).
 - ✅ **SQLite hardening** — WAL + `busy_timeout` + FK indexes on the 6 join/lookup tables (`database.py`).
 - ❌ **`init_db()` at import time** — move to FastAPI lifespan.
-- 🔶 **`requirements.txt` stale** — pins refreshed 2026-10 to the verified Python 3.14 set (fastapi 0.142.2 / pydantic 2.13.5 / uvicorn 0.54.0; the old pydantic 2.9.2 pin had no cp314 wheels and failed to build). Still open: `passlib` is listed but never imported (only referenced in an `auth.py` comment), while `bcrypt` — imported directly by `app/auth.py` and `app/database.py` — is pulled in only as a transitive extra of `passlib[bcrypt]`. Pin `bcrypt` explicitly and drop `passlib`. `pytest` and `httpx` now live in `requirements-dev.txt`.
-- ✅ **Test suite partially committed** — `backend/tests/` now holds 53 pytest cases across 3 files (`test_campus_features.py`, `test_mvc_architecture.py`, `test_mvc_flows.py`) with an isolated throwaway DB via `DATABASE_PATH` + `TemporaryDirectory` (runs on any OS). The Playwright harness is now ported too (`e2e/live-test.js`, 2026-10-09); the 54-check backend regression script (`/tmp/opencode/test_backend.py`) was lost when `/tmp` was wiped — pytest covers that ground, rebuild only if a gap shows up.
-- ✅ **Committed test suite cannot run as-is** — fixed 2026-10: `pytest` + `httpx` pinned in `requirements-dev.txt`, conftest derives the DB path from `TemporaryDirectory`, and the OpenAPI contract fixture was regenerated for current FastAPI/Pydantic. 53/53 green on Python 3.14.
-- ✅ **Live e2e harness committed** — rebuilt in-repo as `e2e/live-test.js` (53 checks; **53/53 green in Helium**, 0 console errors, 2026-10-09). Writes `e2e/report.json` + `e2e/screenshots/` (gitignored); exits non-zero on failure. The original Session-10 suite (`/tmp/opencode/e2e/live-test.js`, 45/45) was wiped with the temp dir.
+- ✅ **`requirements.txt` stale** — pins refreshed 2026-10 to the verified Python 3.14 set (fastapi 0.142.2 / pydantic 2.13.5 / uvicorn 0.54.0; the old pydantic 2.9.2 pin had no cp314 wheels and failed to build). `passlib[bcrypt]` was then dropped for a direct `bcrypt==5.0.0` pin (2026-10-30); `pytest` and `httpx` live in `requirements-dev.txt`.
+- ✅ **Test suite partially committed** — `backend/tests/` now holds 66 pytest cases across 6 files (`test_campus_features.py`, `test_mvc_architecture.py`, `test_mvc_flows.py`, `test_participants.py`, `test_notifications.py`, `test_security_hardening.py`) with an isolated throwaway DB via `DATABASE_PATH` + `TemporaryDirectory` (runs on any OS). The Playwright harness is now ported too (`e2e/live-test.js`, 2026-10-09); the 54-check backend regression script (`/tmp/opencode/test_backend.py`) was lost when `/tmp` was wiped — pytest covers that ground, rebuild only if a gap shows up.
+- ✅ **Committed test suite cannot run as-is** — fixed 2026-10: `pytest` + `httpx` pinned in `requirements-dev.txt`, conftest derives the DB path from `TemporaryDirectory`, and the OpenAPI contract fixture was regenerated for current FastAPI/Pydantic. 66/66 green on Python 3.14.
+- ✅ **Live e2e harness committed** — rebuilt in-repo as `e2e/live-test.js` (53 checks; **53/53 green in Helium**, 0 console errors, 2026-10-09). Writes `e2e/report.json` + `e2e/screenshots/` (gitignored); exits non-zero on failure. The original Session-10 suite (`/tmp/opencode/e2e/live-test.js`, 45/45) was wiped with the temp dir. Re-verified **53/53, 0 console errors** on 2026-10-30 after the Phase-3 `data-testid` migration, with `backend/seed_e2e.py` providing the fixed accounts.
+- ✅ **No CI workflow** — `.github/workflows/ci.yml` gates every push/PR on backend pytest plus frontend `npm run lint`, `npx tsc --noEmit` and `npm run build`. The browser e2e job (Chromium, seeded DB, both servers) is `workflow_dispatch`-only. Added 2026-10-30 with the Phase 3 pass.
 - ⏳ **Cross-engine e2e (Session 11 to-do)** — the UI stack is engine-agnostic (Next.js/React/Leaflet/WebSockets; no Chrome-only APIs — only standard `navigator.geolocation`/`clipboard`). Both engines are already testable via `./launch.sh --browser chrome|firefox` (chromium at `/opt/helium/chrome`, gecko = Zen via flatpak). TODO: run `e2e/live-test.js` against BOTH engines to prove it (done so far on chromium/Helium only), and add the frontend feature-map as a `/demo` page.
-- ✅ **Mock notifications scattered** — consolidated into `app/models/notifications.py` (`notify_sos_alert()`, `notify_ride_cancelled()`), used by `sos.py`; delivery itself remains mocked (see §6 row in `PROJECT_PROGRESS.md`).
-- ❌ **Hardcoded `ZONES` in `rides.py`** — move to a seeded table (unlocks #6/#14).
+- ✅ **Mock notifications scattered** — consolidated into `app/models/notifications.py` (`notify_sos_alert()`, `notify_ride_cancelled()`, `notify_ride_shared()`); now logger-based and called by `sos.py`, `contacts.py` and `rides.cancel_ride()` instead of bare `print()`. Delivery itself remains mocked (see §6 row in `PROJECT_PROGRESS.md`).
+- 🔶 **Hardcoded `ZONES` in `rides.py`** — data moved out of the god file into `app/models/hotspots.py` (2026-10-30). Still open: seed it into a table (unlocks #6/#14 further and makes hotspots editable without a deploy).
 - ✅ **Frontend `API` const duplicated** — centralized in `lib/api.ts` (`API`/`WS`/`API_BASE`, overridable via `NEXT_PUBLIC_API_URL`); all pages import from it. With this, switched everything to explicit IPv4 `127.0.0.1` (backend binds 127.0.0.1, CORS allows both `localhost:3000` and `127.0.0.1:3000`, tracking share URLs use `127.0.0.1`) — fixes the gecko-only failure caused by `localhost`→`::1` (IPv6) when the backend binds IPv4-only.
 - ✅ **One-command launcher** — `./launch.py` / `./launch.sh` / `launch.bat`: starts backend+frontend, renders the logo, opens the site fullscreen (F11 to toggle, `--windowed` to skip), auto-stops + WAL-checkpoints the DB when the browser closes, plus `--no-browser`/`--browser chrome|firefox`/`--detect`/`status`/`stop`. Cross-platform (pure stdlib; tested on Linux, code-reviewed for macOS/Windows).
 
@@ -325,6 +328,7 @@ Prioritized (🔴 = fix soon, 🟡 = improve, 🟢 = nice-to-have). File referen
 - ✅ **Infinite spinners on failed fetches** — eco/rides/contacts pages now render error states.
 - ✅ **`alert()` used for feedback** — rides/contacts now use inline notices.
 - ✅ **Surge schedule endpoint unused** — rides page shows an hourly "upcoming peak" strip + current-hour marker (fulfils SRS #13).
+- ✅ **Dead "Live Map Tracking" link** — the ride card linked to `/dashboard/track`, which never existed, so Next prefetched a 404 on every rides render. Now points at `/dashboard` (the tracking page) — found and fixed by the Phase-3 e2e console-hygiene check (2026-10-30).
 - ✅ **Map re-centers on every GPS tick** — `TrackingMap.tsx`. Auto-follow only until the user interacts + "🎯 Re-center" button.
 - ✅ **Track page polls after session ended** — `track/[token]/page.tsx`. Stops polling when `is_active=false`.
 
@@ -332,9 +336,14 @@ Prioritized (🔴 = fix soon, 🟡 = improve, 🟢 = nice-to-have). File referen
 
 The full code-smell audit (all findings, file:line evidence) and the
 prioritized 4-phase fix plan now live in the dedicated file:
-**[`Code_issues(smells).md`](./Code_issues(smells).md)** — Phase 1 (quick
-wins, includes the gateway-page XSS + the `DEMO_MODE` fail-open default) is
-the recommended next small session.
+**[`Code_issues(smells).md`](./Code_issues(smells).md)**.
+
+**Status (2026-10-30):** Phases 1 (quick wins), 2 (backend structure) and
+3 (frontend structure) are ✅ complete — backend 66/66, e2e 53/53 with 0 console
+errors, lint/`tsc --noEmit`/build clean. Phase 4 stays deferred until the
+Postgres/Redis migration. The audit's Phase 3 deliverables live in
+`frontend/lib/{client,useApi,format,badges}`, the `app/dashboard/rides/`
+feature folder, `.github/workflows/ci.yml` and `backend/seed_e2e.py`.
 
 ## 7. Definition of Done (per feature)
 

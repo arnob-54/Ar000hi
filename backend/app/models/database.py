@@ -3,6 +3,7 @@ Arooohi Backend — Database Layer (Python built-in sqlite3)
 """
 import sqlite3
 import os
+from contextlib import contextmanager
 
 DB_PATH = os.environ.get("DATABASE_PATH", os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "arooohi.db"))
 
@@ -14,6 +15,28 @@ def get_db() -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA busy_timeout = 5000")
     return conn
+
+
+@contextmanager
+def db_session(immediate: bool = False):
+    """Connection scope that always closes, committing on success.
+
+    Replaces the manual ``conn = get_db() ... conn.close()`` pattern so an early
+    ``raise`` cannot leak a connection. ``immediate=True`` issues
+    ``BEGIN IMMEDIATE`` first, taking SQLite's write lock before reads that feed
+    a check-then-insert (e.g. seat capacity), which closes the TOCTOU window.
+    """
+    conn = get_db()
+    try:
+        if immediate:
+            conn.execute("BEGIN IMMEDIATE")
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def _ensure_column(conn: sqlite3.Connection, table: str, column: str, ddl: str) -> None:

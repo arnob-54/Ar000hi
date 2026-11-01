@@ -129,10 +129,14 @@ def _spawn(name, cmd, logfile, cwd, env=None):
 
 def start_backend():
     py = backend_python()
+    # The demo must be opted into explicitly (DEMO_MODE is fail-closed since the
+    # code-smell pass). Respect a user-set value rather than overwriting it.
+    env = dict(os.environ)
+    env.setdefault("DEMO_MODE", "1")
     return _spawn("backend",
                   [py, "-m", "uvicorn", "app.main:app",
                    "--host", "127.0.0.1", "--port", "8000", "--reload"],
-                  "backend.log", BACKEND_DIR)
+                  "backend.log", BACKEND_DIR, env)
 
 
 def start_frontend():

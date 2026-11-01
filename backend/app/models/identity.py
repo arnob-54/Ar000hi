@@ -13,7 +13,7 @@ SECRET_KEY = os.getenv("SECRET_KEY", "arooohi-dev-secret-key-2024")
 if SECRET_KEY == "arooohi-dev-secret-key-2024":
     # Security improvement (PROJECT_PLAN.md §6.1): never silently run on the
     # well-known default outside of a local demo. Fail fast in production.
-    if os.getenv("DEMO_MODE", "1") != "1":
+    if os.getenv("DEMO_MODE", "0") != "1":
         raise RuntimeError(
             "SECRET_KEY env var must be set when DEMO_MODE != 1 (refusing to use the default secret)"
         )
@@ -49,25 +49,23 @@ def decode_token(token: str) -> dict:
 
 
 def ensure_active_user(user_id: str) -> str:
-    from app.models.database import get_db
-    conn = get_db()
-    user = conn.execute(
-        "SELECT is_active FROM users WHERE id = ?", (user_id,)
-    ).fetchone()
-    conn.close()
-    if not user:
-        raise DomainError(status_code=401, detail="Account no longer exists")
-    if not user["is_active"]:
-        raise DomainError(status_code=403, detail="Your account has been deactivated")
-    return user_id
+    from app.models.database import db_session
+    with db_session() as conn:
+        user = conn.execute(
+            "SELECT is_active FROM users WHERE id = ?", (user_id,)
+        ).fetchone()
+        if not user:
+            raise DomainError(status_code=401, detail="Account no longer exists")
+        if not user["is_active"]:
+            raise DomainError(status_code=403, detail="Your account has been deactivated")
+        return user_id
 
 
 def ensure_admin(user_id: str) -> str:
     """Ensure the current user is an admin."""
-    from app.models.database import get_db
-    conn = get_db()
-    user = conn.execute("SELECT role FROM users WHERE id = ?", (user_id,)).fetchone()
-    conn.close()
-    if not user or user["role"] != "admin":
-        raise DomainError(status_code=403, detail="Admin access required")
-    return user_id
+    from app.models.database import db_session
+    with db_session() as conn:
+        user = conn.execute("SELECT role FROM users WHERE id = ?", (user_id,)).fetchone()
+        if not user or user["role"] != "admin":
+            raise DomainError(status_code=403, detail="Admin access required")
+        return user_id

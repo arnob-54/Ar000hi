@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
 import { API } from "@/lib/api";
+import { fmtMoney } from "@/lib/format";
 
 // Feature 10: Ride History & Receipt Log
 // Covers BOTH roles — #16 Earnings answers "what did I earn as a driver", this
@@ -44,9 +45,6 @@ interface PendingReview {
   source: string;
   destination: string;
 }
-
-const taka = (n: number) =>
-  "৳" + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 // Timestamps arrive in two shapes: SQLite's naive-UTC "YYYY-MM-DD HH:MM:SS"
 // (needs a Z) and offset-aware ISO like "...+06:00" (must NOT get one). Appending
@@ -167,17 +165,17 @@ export default function HistoryPage() {
           </div>
           <div className="glass-card" style={{ padding: 20 }}>
             <div className="stat-label">Spent as Rider</div>
-            <div className="stat-value" style={{ color: "var(--danger)" }}>{taka(summary.total_spent)}</div>
+            <div className="stat-value" style={{ color: "var(--danger)" }}>{fmtMoney(summary.total_spent)}</div>
           </div>
           <div className="glass-card" style={{ padding: 20 }}>
             <div className="stat-label">Earned as Driver</div>
-            <div className="stat-value" style={{ color: "var(--success)" }}>{taka(summary.total_earned)}</div>
+            <div className="stat-value" style={{ color: "var(--success)" }}>{fmtMoney(summary.total_earned)}</div>
           </div>
           <div className="glass-card" style={{ padding: 20 }}>
             <div className="stat-label">Distance Travelled</div>
             <div className="stat-value">{summary.distance_km.toFixed(1)} km</div>
             <div style={{ fontSize: "0.76rem", color: "var(--text-tertiary)", marginTop: 4 }}>
-              Net {summary.net >= 0 ? "+" : "−"}{taka(Math.abs(summary.net))}
+              Net {summary.net >= 0 ? "+" : "−"}{fmtMoney(Math.abs(summary.net))}
             </div>
           </div>
         </div>
@@ -267,7 +265,7 @@ export default function HistoryPage() {
                     <td style={{ textAlign: "right", fontWeight: 700,
                                  color: !t.settled ? "var(--warning)"
                                         : t.role === "driver" ? "var(--success)" : "var(--text-primary)" }}>
-                      {t.role === "driver" ? "+" : "−"}{taka(t.amount)}
+                      {t.role === "driver" ? "+" : "−"}{fmtMoney(t.amount)}
                       {!t.settled && (
                         <div style={{ fontSize: "0.68rem", fontWeight: 600 }}>⚠️ unpaid</div>
                       )}

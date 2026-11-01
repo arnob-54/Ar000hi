@@ -2,6 +2,7 @@
 import { useEffect, useState, useCallback } from "react";
 
 import { API, API_BASE } from "@/lib/api";
+import { DRIVER_STATUS_BADGE, badgeClass } from "@/lib/badges";
 
 interface DriverApp {
   id: string;
@@ -46,8 +47,6 @@ export default function AdminDriversPage() {
 
   const filtered = filter === "all" ? drivers : drivers.filter(d => d.verification_status === filter);
 
-  const statusBadge: Record<string, string> = { pending: "badge-warning", approved: "badge-success", rejected: "badge-danger" };
-
   return (
     <>
       <div className="page-header">
@@ -78,7 +77,7 @@ export default function AdminDriversPage() {
                   {d.email} • 📞 {d.phone} • {d.gender}
                 </div>
               </div>
-              <span className={`badge ${statusBadge[d.verification_status]}`}>{d.verification_status}</span>
+              <span className={`badge ${badgeClass(DRIVER_STATUS_BADGE, d.verification_status)}`}>{d.verification_status}</span>
             </div>
 
             {/* Vehicle Info */}

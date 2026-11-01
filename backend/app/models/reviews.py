@@ -1,7 +1,7 @@
 """Reviews model: business rules and persistence, independent of FastAPI."""
 import sqlite3
 import uuid
-from app.models.database import get_db
+from app.models.database import db_session
 from app.schemas.reviews import ReviewRequest
 from app.models.errors import DomainError
 
@@ -78,49 +78,43 @@ def create_review(body: ReviewRequest, user_id: str):
     if body.reviewee_id == user_id:
         raise DomainError(status_code=400, detail="You cannot review yourself")
 
-    conn = get_db()
-    ride, people = _participants(conn, body.ride_id)
-    if not ride:
-        conn.close()
-        raise DomainError(status_code=404, detail="Ride not found")
-    if ride["status"] != "completed":
-        status = ride["status"]
-        conn.close()
-        raise DomainError(
-            status_code=400,
-            detail=f"This ride is {status}. You can only review a completed ride.",
-        )
-    if user_id not in people:
-        conn.close()
-        raise DomainError(status_code=403, detail="You were not part of this ride")
-    if body.reviewee_id not in people:
-        conn.close()
-        raise DomainError(status_code=400, detail="That person was not on this ride")
+    with db_session() as conn:
+        ride, people = _participants(conn, body.ride_id)
+        if not ride:
+            raise DomainError(status_code=404, detail="Ride not found")
+        if ride["status"] != "completed":
+            status = ride["status"]
+            raise DomainError(
+                status_code=400,
+                detail=f"This ride is {status}. You can only review a completed ride.",
+            )
+        if user_id not in people:
+            raise DomainError(status_code=403, detail="You were not part of this ride")
+        if body.reviewee_id not in people:
+            raise DomainError(status_code=400, detail="That person was not on this ride")
 
-    comment = (body.comment or "").strip()[:500]
-    review_id = str(uuid.uuid4())
-    try:
-        conn.execute(
-            """INSERT INTO reviews (id, ride_id, reviewer_id, reviewee_id, stars, comment)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (review_id, body.ride_id, user_id, body.reviewee_id, body.stars, comment),
-        )
-        conn.commit()
-    except sqlite3.IntegrityError:
-        conn.close()
-        raise DomainError(
-            status_code=409,
-            detail="You have already reviewed this person for this ride",
-        )
+        comment = (body.comment or "").strip()[:500]
+        review_id = str(uuid.uuid4())
+        try:
+            conn.execute(
+                """INSERT INTO reviews (id, ride_id, reviewer_id, reviewee_id, stars, comment)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (review_id, body.ride_id, user_id, body.reviewee_id, body.stars, comment),
+            )
+            conn.commit()
+        except sqlite3.IntegrityError:
+            raise DomainError(
+                status_code=409,
+                detail="You have already reviewed this person for this ride",
+            )
 
-    summary = rating_for(conn, body.reviewee_id)
-    conn.close()
-    return {
-        "message": "Thanks — your review has been recorded",
-        "review_id": review_id,
-        "stars": body.stars,
-        "reviewee_rating": summary,
-    }
+        summary = rating_for(conn, body.reviewee_id)
+        return {
+            "message": "Thanks — your review has been recorded",
+            "review_id": review_id,
+            "stars": body.stars,
+            "reviewee_rating": summary,
+        }
 
 
 def pending_reviews(user_id: str):
@@ -128,54 +122,50 @@ def pending_reviews(user_id: str):
 
     Drives the post-ride prompt: the app should ask once, then stop asking.
     """
-    conn = get_db()
-    rows = conn.execute(
-        """SELECT r.id AS ride_id, r.source, r.destination, r.ended_at,
-                  r.driver_id, u.name AS driver_name
-           FROM ride_passengers rp
-           JOIN rides r ON r.id = rp.ride_id
-           JOIN users u ON u.id = r.driver_id
-           WHERE rp.passenger_id = ?
-             AND rp.status IN ('accepted', 'completed')
-             AND r.status = 'completed'
-             AND r.driver_id != ?
-             AND NOT EXISTS (
-                 SELECT 1 FROM reviews rv
-                 WHERE rv.ride_id = r.id
-                   AND rv.reviewer_id = ?
-                   AND rv.reviewee_id = r.driver_id)
-           ORDER BY r.ended_at DESC""",
-        (user_id, user_id, user_id),
-    ).fetchall()
-    conn.close()
-    return [
-        {
-            "ride_id": r["ride_id"],
-            "driver_id": r["driver_id"],
-            "driver_name": r["driver_name"],
-            "source": r["source"],
-            "destination": r["destination"],
-            "ended_at": r["ended_at"],
-        }
-        for r in rows
-    ]
+    with db_session() as conn:
+        rows = conn.execute(
+            """SELECT r.id AS ride_id, r.source, r.destination, r.ended_at,
+                      r.driver_id, u.name AS driver_name
+               FROM ride_passengers rp
+               JOIN rides r ON r.id = rp.ride_id
+               JOIN users u ON u.id = r.driver_id
+               WHERE rp.passenger_id = ?
+                 AND rp.status IN ('accepted', 'completed')
+                 AND r.status = 'completed'
+                 AND r.driver_id != ?
+                 AND NOT EXISTS (
+                     SELECT 1 FROM reviews rv
+                     WHERE rv.ride_id = r.id
+                       AND rv.reviewer_id = ?
+                       AND rv.reviewee_id = r.driver_id)
+               ORDER BY r.ended_at DESC""",
+            (user_id, user_id, user_id),
+        ).fetchall()
+        return [
+            {
+                "ride_id": r["ride_id"],
+                "driver_id": r["driver_id"],
+                "driver_name": r["driver_name"],
+                "source": r["source"],
+                "destination": r["destination"],
+                "ended_at": r["ended_at"],
+            }
+            for r in rows
+        ]
 
 
 def my_reviews(user_id: str):
     """Reviews this user has received, plus their average."""
-    conn = get_db()
-    data = _reviews_for(conn, user_id)
-    conn.close()
-    return data
+    with db_session() as conn:
+        data = _reviews_for(conn, user_id)
+        return data
 
 
 def driver_reviews(driver_id: str, user_id: str):
     """Public profile rating: average, star histogram and recent comments."""
-    conn = get_db()
-    user = conn.execute("SELECT name FROM users WHERE id = ?", (driver_id,)).fetchone()
-    if not user:
-        conn.close()
-        raise DomainError(status_code=404, detail="User not found")
-    data = _reviews_for(conn, driver_id)
-    conn.close()
-    return {"driver_id": driver_id, "driver_name": user["name"], **data}
+    with db_session() as conn:
+        user = conn.execute("SELECT name FROM users WHERE id = ?", (driver_id,)).fetchone()
+        if not user:
+            raise DomainError(status_code=404, detail="User not found")
+        data = _reviews_for(conn, driver_id)
+        return {"driver_id": driver_id, "driver_name": user["name"], **data}

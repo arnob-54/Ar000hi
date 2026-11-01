@@ -5,7 +5,9 @@
 fastapi==0.142.2
 uvicorn[standard]==0.54.0
 python-jose[cryptography]==3.5.0
-passlib[bcrypt]==1.7.4
+# Hashed directly in app/models/identity.py (passlib's bcrypt wrapper is not
+# compatible with bcrypt 5.x, so the library itself is pinned instead).
+bcrypt==5.0.0
 python-multipart==0.0.32
 aiofiles==25.1.0
 pydantic==2.13.5

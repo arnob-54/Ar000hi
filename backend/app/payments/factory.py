@@ -14,7 +14,7 @@ from app.payments.base import GatewayError, PaymentGateway
 _gateway: PaymentGateway | None = None
 _lock = threading.Lock()
 
-DEMO_MODE = os.getenv("DEMO_MODE", "1") == "1"
+DEMO_MODE = os.getenv("DEMO_MODE", "0") == "1"
 # Where the simulated checkout page is served from (the backend itself).
 CHECKOUT_BASE = os.getenv("BACKEND_PUBLIC_URL", "http://127.0.0.1:8000")
 

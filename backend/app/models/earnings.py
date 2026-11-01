@@ -2,7 +2,7 @@
 from datetime import datetime as dt, timedelta
 from zoneinfo import ZoneInfo
 from app.models import ledger as ws
-from app.models.database import get_db
+from app.models.database import db_session
 from app.models.errors import DomainError
 
 BD_TZ = ZoneInfo("Asia/Dhaka")
@@ -110,69 +110,68 @@ def _passenger_count(conn, ride_id: str) -> int:
 
 def earnings_summary(user_id: str):
     """Headline figures: lifetime net, ride count, this week vs last, payout ready."""
-    conn = get_db()
-    ws.get_or_create_wallet(conn, user_id)
-    conn.commit()
+    with db_session() as conn:
+        ws.get_or_create_wallet(conn, user_id)
+        conn.commit()
 
-    credits = _credits(conn, user_id)
-    pending = _uncollected(conn, user_id)
-    balance = ws.balance_of(conn, user_id)
+        credits = _credits(conn, user_id)
+        pending = _uncollected(conn, user_id)
+        balance = ws.balance_of(conn, user_id)
 
-    total_net = round(sum(c["amount"] for c in credits), 2)
-    total_fees = round(sum(c["platform_fee"] for c in credits), 2)
-    rides_paid = len(credits)
+        total_net = round(sum(c["amount"] for c in credits), 2)
+        total_fees = round(sum(c["platform_fee"] for c in credits), 2)
+        rides_paid = len(credits)
 
-    now_bd = dt.now(BD_TZ)
-    this_start = _week_start(now_bd)
-    last_start = this_start - timedelta(days=7)
+        now_bd = dt.now(BD_TZ)
+        this_start = _week_start(now_bd)
+        last_start = this_start - timedelta(days=7)
 
-    this_week = last_week = 0.0
-    this_week_rides = 0
-    total_km = 0.0
-    total_passengers = 0
-    for c in credits:
-        when = _to_bd(c["created_at"])
-        if when:
-            if when >= this_start:
-                this_week = round(this_week + c["amount"], 2)
-                this_week_rides += 1
-            elif when >= last_start:
-                last_week = round(last_week + c["amount"], 2)
-        total_km += c["distance_km"] or 0.0
-        total_passengers += _passenger_count(conn, c["ride_id"])
+        this_week = last_week = 0.0
+        this_week_rides = 0
+        total_km = 0.0
+        total_passengers = 0
+        for c in credits:
+            when = _to_bd(c["created_at"])
+            if when:
+                if when >= this_start:
+                    this_week = round(this_week + c["amount"], 2)
+                    this_week_rides += 1
+                elif when >= last_start:
+                    last_week = round(last_week + c["amount"], 2)
+            total_km += c["distance_km"] or 0.0
+            total_passengers += _passenger_count(conn, c["ride_id"])
 
-    # Lost income = the fare that was owed but never received, including the
-    # shortfall on rides that only settled partially.
-    unsettled_value = round(sum(p["shortfall"] for p in pending), 2)
-    unsettled_rides = len(pending)
-    fully_unpaid = sum(1 for p in pending if p["kind"] == "unpaid")
-    partially_paid = sum(1 for p in pending if p["kind"] == "partial")
-    conn.close()
+        # Lost income = the fare that was owed but never received, including the
+        # shortfall on rides that only settled partially.
+        unsettled_value = round(sum(p["shortfall"] for p in pending), 2)
+        unsettled_rides = len(pending)
+        fully_unpaid = sum(1 for p in pending if p["kind"] == "unpaid")
+        partially_paid = sum(1 for p in pending if p["kind"] == "partial")
 
-    if last_week > 0:
-        change_pct = round((this_week - last_week) / last_week * 100, 1)
-    else:
-        change_pct = 100.0 if this_week > 0 else 0.0
+        if last_week > 0:
+            change_pct = round((this_week - last_week) / last_week * 100, 1)
+        else:
+            change_pct = 100.0 if this_week > 0 else 0.0
 
-    return {
-        "total_earned": total_net,
-        "total_platform_fees": total_fees,
-        "gross_earned": round(total_net + total_fees, 2),
-        "rides_paid": rides_paid,
-        "avg_per_ride": round(total_net / rides_paid, 2) if rides_paid else 0.0,
-        "this_week": this_week,
-        "this_week_rides": this_week_rides,
-        "last_week": last_week,
-        "change_pct": change_pct,
-        "available_payout": balance,
-        "total_distance_km": round(total_km, 2),
-        "total_passengers": total_passengers,
-        "unsettled_rides": unsettled_rides,
-        "unsettled_value": unsettled_value,
-        "fully_unpaid_rides": fully_unpaid,
-        "partially_paid_rides": partially_paid,
-        "week_starting": this_start.date().isoformat(),
-    }
+        return {
+            "total_earned": total_net,
+            "total_platform_fees": total_fees,
+            "gross_earned": round(total_net + total_fees, 2),
+            "rides_paid": rides_paid,
+            "avg_per_ride": round(total_net / rides_paid, 2) if rides_paid else 0.0,
+            "this_week": this_week,
+            "this_week_rides": this_week_rides,
+            "last_week": last_week,
+            "change_pct": change_pct,
+            "available_payout": balance,
+            "total_distance_km": round(total_km, 2),
+            "total_passengers": total_passengers,
+            "unsettled_rides": unsettled_rides,
+            "unsettled_value": unsettled_value,
+            "fully_unpaid_rides": fully_unpaid,
+            "partially_paid_rides": partially_paid,
+            "week_starting": this_start.date().isoformat(),
+        }
 
 
 def _bucket_series(credits, count: int, step_days: int, label_fmt: str) -> list[dict]:
@@ -218,21 +217,20 @@ def _bucket_series(credits, count: int, step_days: int, label_fmt: str) -> list[
 
 def earnings_weekly(user_id: str, weeks: int=8):
     """Earnings per week (Monday start, Dhaka time), oldest first."""
-    conn = get_db()
-    credits = _credits(conn, user_id)
-    conn.close()
+    with db_session() as conn:
+        credits = _credits(conn, user_id)
 
-    series = _bucket_series(credits, weeks, 7, "%d %b")
-    amounts = [b["amount"] for b in series]
-    return {
-        # `weeks` kept for backwards compatibility; `buckets` is the shared key.
-        "weeks": series,
-        "buckets": series,
-        "period": "week",
-        "max": max(amounts) if amounts else 0.0,
-        "total": round(sum(amounts), 2),
-        "timezone": "Asia/Dhaka",
-    }
+        series = _bucket_series(credits, weeks, 7, "%d %b")
+        amounts = [b["amount"] for b in series]
+        return {
+            # `weeks` kept for backwards compatibility; `buckets` is the shared key.
+            "weeks": series,
+            "buckets": series,
+            "period": "week",
+            "max": max(amounts) if amounts else 0.0,
+            "total": round(sum(amounts), 2),
+            "timezone": "Asia/Dhaka",
+        }
 
 
 def earnings_daily(user_id: str, days: int=14):
@@ -241,66 +239,64 @@ def earnings_daily(user_id: str, days: int=14):
     Expect this view to look sparse: a student driver runs a handful of rides a
     week, so most days are legitimately zero.
     """
-    conn = get_db()
-    credits = _credits(conn, user_id)
-    conn.close()
+    with db_session() as conn:
+        credits = _credits(conn, user_id)
 
-    series = _bucket_series(credits, days, 1, "%d %b")
-    amounts = [b["amount"] for b in series]
-    return {
-        "days": series,
-        "buckets": series,
-        "period": "day",
-        "max": max(amounts) if amounts else 0.0,
-        "total": round(sum(amounts), 2),
-        "timezone": "Asia/Dhaka",
-    }
+        series = _bucket_series(credits, days, 1, "%d %b")
+        amounts = [b["amount"] for b in series]
+        return {
+            "days": series,
+            "buckets": series,
+            "period": "day",
+            "max": max(amounts) if amounts else 0.0,
+            "total": round(sum(amounts), 2),
+            "timezone": "Asia/Dhaka",
+        }
 
 
 def earnings_rides(user_id: str, limit: int=20):
     """Per-ride earnings, newest first, with unsettled rides flagged."""
-    conn = get_db()
-    credits = _credits(conn, user_id)
-    pending = _uncollected(conn, user_id)
-    short_by_ride = {p["ride_id"]: p for p in pending}
+    with db_session() as conn:
+        credits = _credits(conn, user_id)
+        pending = _uncollected(conn, user_id)
+        short_by_ride = {p["ride_id"]: p for p in pending}
 
-    rows = []
-    for c in credits:
-        short = short_by_ride.get(c["ride_id"])
-        rows.append({
-            "ride_id": c["ride_id"],
-            "source": c["source"] or "—",
-            "destination": c["destination"] or "—",
-            "when": c["created_at"],
-            "distance_km": c["distance_km"],
-            "passengers": _passenger_count(conn, c["ride_id"]),
-            "gross": round(c["amount"] + c["platform_fee"], 2),
-            "platform_fee": round(c["platform_fee"], 2),
-            "net": round(c["amount"], 2),
-            "settled": True,
-            # A credited ride can still be short if only some passengers paid.
-            "shortfall": short["shortfall"] if short else 0.0,
-            "expected": short["expected"] if short else round(c["amount"] + c["platform_fee"], 2),
-        })
+        rows = []
+        for c in credits:
+            short = short_by_ride.get(c["ride_id"])
+            rows.append({
+                "ride_id": c["ride_id"],
+                "source": c["source"] or "—",
+                "destination": c["destination"] or "—",
+                "when": c["created_at"],
+                "distance_km": c["distance_km"],
+                "passengers": _passenger_count(conn, c["ride_id"]),
+                "gross": round(c["amount"] + c["platform_fee"], 2),
+                "platform_fee": round(c["platform_fee"], 2),
+                "net": round(c["amount"], 2),
+                "settled": True,
+                # A credited ride can still be short if only some passengers paid.
+                "shortfall": short["shortfall"] if short else 0.0,
+                "expected": short["expected"] if short else round(c["amount"] + c["platform_fee"], 2),
+            })
 
-    for p in pending:
-        if p["kind"] != "unpaid":
-            continue   # partials are already represented by their credit row above
-        rows.append({
-            "ride_id": p["ride_id"],
-            "source": p["source"],
-            "destination": p["destination"],
-            "when": p["ended_at"],
-            "distance_km": p["distance_km"],
-            "passengers": p["passengers"],
-            "gross": p["expected"],
-            "platform_fee": 0.0,
-            "net": 0.0,
-            "settled": False,
-            "shortfall": p["shortfall"],
-            "expected": p["expected"],
-        })
-    conn.close()
+        for p in pending:
+            if p["kind"] != "unpaid":
+                continue   # partials are already represented by their credit row above
+            rows.append({
+                "ride_id": p["ride_id"],
+                "source": p["source"],
+                "destination": p["destination"],
+                "when": p["ended_at"],
+                "distance_km": p["distance_km"],
+                "passengers": p["passengers"],
+                "gross": p["expected"],
+                "platform_fee": 0.0,
+                "net": 0.0,
+                "settled": False,
+                "shortfall": p["shortfall"],
+                "expected": p["expected"],
+            })
 
-    rows.sort(key=lambda r: r["when"] or "", reverse=True)
-    return rows[:limit]
+        rows.sort(key=lambda r: r["when"] or "", reverse=True)
+        return rows[:limit]

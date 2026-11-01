@@ -109,7 +109,7 @@ async function readBalance(page) {
 }
 
 function cardOf(page, text) {
-  return page.locator(".glass-card", { hasText: text }).first();
+  return page.locator('[data-testid="ride-card"]', { hasText: text }).first();
 }
 
 async function warmUp() {
@@ -135,7 +135,11 @@ async function main() {
 
   await warmUp();
 
-  const browser = await chromium.launch({ executablePath: HELIUM, headless: false });
+  const browser = await chromium.launch({
+    executablePath: HELIUM,
+    // HEADLESS=1 lets CI drive the suite; the demo default stays visible.
+    headless: process.env.HEADLESS === "1",
+  });
   const vp = { width: 1440, height: 900 };
   const geo = { latitude: 23.7781, longitude: 90.4042 };
 
@@ -236,9 +240,9 @@ async function main() {
 
   await check(pD, "Rides page shows the three workflow tabs", async () => {
     await pD.goto(`${BASE}/dashboard/rides`);
-    await pD.locator('button:has-text("Browse Rides")').waitFor({ timeout: 15000 });
-    await pD.locator('button:has-text("Smart Match")').waitFor();
-    await pD.locator('button:has-text("Offer Ride")').waitFor();
+    await pD.getByTestId("rides-tab-browse").waitFor({ timeout: 15000 });
+    await pD.getByTestId("rides-tab-match").waitFor();
+    await pD.getByTestId("rides-tab-offer").waitFor();
     return "Browse / Smart Match / Offer";
   });
 
@@ -270,19 +274,19 @@ async function main() {
   });
 
   await check(pD, "Driver publishes a ride (Gate 1 → Aftabnagar, ৳150)", async () => {
-    await pD.locator('button:has-text("Offer Ride")').click();
+    await pD.getByTestId("rides-tab-offer").click();
     await pD.locator('label:has-text("Pickup Hotspot (From)") + select').selectOption("gate 1");
     await pD.locator('label:has-text("Destination Hotspot (To)") + select').selectOption("aftabnagar");
     await pD.getByPlaceholder("e.g. 100").fill("150");
     await pD.locator('label:has-text("Available Seats") + input').fill("3");
-    await pD.click('button:has-text("Publish Ride Offer")');
+    await pD.getByTestId("offer-submit").click();
     await pD.getByText(/Ride created|Ride offered/).first().waitFor({ timeout: 20000 });
     await shot(pD, "ride-published");
     return "3 seats, no stops, immediately available";
   });
 
   await check(pD, "Created ride appears under My Rides", async () => {
-    await pD.locator('button:has-text("Browse Rides")').click();
+    await pD.getByTestId("rides-tab-browse").click();
     await pD.getByText("My Active & Created Rides").first().waitFor({ timeout: 15000 });
     await pD.getByText("Aftabnagar Main Gate").first().waitFor({ timeout: 10000 });
     return "ride card listed";
@@ -333,22 +337,22 @@ async function main() {
 
   await check(pR, "Smart Match scores the new route", async () => {
     await pR.goto(`${BASE}/dashboard/rides`);
-    await pR.locator('button:has-text("Smart Match")').click();
-    await pR.locator('label:has-text("Pickup Hotspot (From)") + select').selectOption("gate 1");
-    await pR.locator('label:has-text("Destination Hotspot (To)") + select').selectOption("aftabnagar");
-    await pR.click('button:has-text("Find Best Matches")');
+    await pR.getByTestId("rides-tab-match").click();
+    await pR.getByTestId("match-pickup").selectOption("gate 1");
+    await pR.getByTestId("match-dropoff").selectOption("aftabnagar");
+    await pR.getByTestId("match-submit").click();
     await pR.getByText(/% Match Score/).first().waitFor({ timeout: 20000 });
     await shot(pR, "smart-match");
     return "match card with score + reasons";
   });
 
   await check(pR, "Rider finds the ride and requests a seat", async () => {
-    await pR.locator('button:has-text("Browse Rides")').click();
+    await pR.getByTestId("rides-tab-browse").click();
     const card = cardOf(pR, "Aftabnagar Main Gate");
     await card.waitFor({ timeout: 15000 });
-    await card.locator('button:has-text("Request Seat")').click();
+    await card.getByTestId("ride-request-seat").click();
     await pR.getByText("Select Your Pickup & Drop-Off Stops").first().waitFor({ timeout: 10000 });
-    await pR.click('button:has-text("Confirm & Request Seat")');
+    await pR.getByTestId("join-confirm").click();
     await pR.getByText(/Seat requested|Ride request sent/).first().waitFor({ timeout: 20000 });
     await shot(pR, "seat-requested");
     return "request pending driver acceptance";
@@ -360,8 +364,8 @@ async function main() {
     await pD.goto(`${BASE}/dashboard/rides`);
     const card = cardOf(pD, "Aftabnagar Main Gate");
     await card.waitFor({ timeout: 15000 });
-    await card.locator('button:has-text("Manage requests")').click();
-    await card.locator('button:has-text("Accept")').first().click();
+    await card.getByTestId("ride-manage").click();
+    await card.getByTestId("ride-accept").click();
     await pD.getByText(/is on board/).first().waitFor({ timeout: 15000 });
     await shot(pD, "passenger-accepted");
     return "Rider Person accepted";
@@ -369,7 +373,7 @@ async function main() {
 
   await check(pD, "Driver starts the ride", async () => {
     const card = cardOf(pD, "Aftabnagar Main Gate");
-    await card.locator('button:has-text("Start Ride")').click();
+    await card.getByTestId("ride-start").click();
     await pD.getByText(/Ride started/).first().waitFor({ timeout: 15000 });
     await shot(pD, "ride-active");
     return "status → active";
@@ -381,11 +385,11 @@ async function main() {
     await pD.goto(`${BASE}/dashboard/rides`);
     const card = cardOf(pD, "Aftabnagar Main Gate");
     await card.waitFor({ timeout: 15000 });
-    await card.locator('a:has-text("Ride Chat")').click();
+    await card.getByTestId("ride-chat").click();
     await pD.waitForURL("**/dashboard/chat/**", { timeout: 20000 });
     await pD.waitForFunction(
       () => {
-        const b = [...document.querySelectorAll("button")].find((x) => x.textContent.trim() === "Send");
+        const b = document.querySelector('[data-testid="chat-send"]');
         return b && !b.disabled;
       },
       { timeout: 20000 }
@@ -397,17 +401,17 @@ async function main() {
     await pR.goto(`${BASE}/dashboard/rides`);
     const card = cardOf(pR, "Aftabnagar Main Gate");
     await card.waitFor({ timeout: 15000 });
-    await card.locator('a:has-text("Ride Chat")').click();
+    await card.getByTestId("ride-chat").click();
     await pR.waitForURL("**/dashboard/chat/**", { timeout: 20000 });
     await pR.waitForFunction(
       () => {
-        const b = [...document.querySelectorAll("button")].find((x) => x.textContent.trim() === "Send");
+        const b = document.querySelector('[data-testid="chat-send"]');
         return b && !b.disabled;
       },
       { timeout: 20000 }
     );
-    await pR.getByPlaceholder("Type a message...").fill("rider: on my way");
-    await pR.click('button:has-text("Send")');
+    await pR.getByTestId("chat-input").fill("rider: on my way");
+    await pR.getByTestId("chat-send").click();
     await pR.getByText("rider: on my way").first().waitFor({ timeout: 15000 });
     return "message persisted + echoed";
   });
@@ -418,8 +422,8 @@ async function main() {
   });
 
   await check(pD, "Driver replies in chat", async () => {
-    await pD.getByPlaceholder("Type a message...").fill("driver: gate 1 in 2 min");
-    await pD.click('button:has-text("Send")');
+    await pD.getByTestId("chat-input").fill("driver: gate 1 in 2 min");
+    await pD.getByTestId("chat-send").click();
     await pD.getByText("driver: gate 1 in 2 min").first().waitFor({ timeout: 15000 });
     return "reply persisted";
   });
@@ -436,7 +440,7 @@ async function main() {
     await pR.goto(`${BASE}/dashboard/rides`);
     const card = cardOf(pR, "Aftabnagar Main Gate");
     await card.waitFor({ timeout: 15000 });
-    await card.locator('button:has-text("Fare Splitter")').click();
+    await card.getByTestId("ride-split").click();
     await pR.getByText("Total Ride Cost").first().waitFor({ timeout: 15000 });
     await pR.getByText("Individual Passenger Shares").first().waitFor({ timeout: 10000 });
     await shot(pR, "fare-splitter");
@@ -490,7 +494,7 @@ async function main() {
     await pD.goto(`${BASE}/dashboard/rides`);
     const card = cardOf(pD, "Aftabnagar Main Gate");
     await card.waitFor({ timeout: 15000 });
-    await card.locator('button:has-text("End Ride")').click();
+    await card.getByTestId("ride-end").click();
     await pD.getByText(/Ride completed/).first().waitFor({ timeout: 20000 });
     await shot(pD, "ride-completed");
     return "settlement executed at end_ride";

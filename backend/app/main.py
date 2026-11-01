@@ -84,7 +84,7 @@ app.include_router(reviews_router, prefix="/api/reviews", tags=["Driver Rating &
 # The SIMULATED bKash gateway page. Mounted only in demo mode — in production the
 # browser would be redirected to bKash's own hosted checkout instead. Deliberately
 # not under /api and deliberately unauthenticated: it stands in for a third party.
-if os.getenv("DEMO_MODE", "1") == "1":
+if os.getenv("DEMO_MODE", "0") == "1":
     app.include_router(bkash_checkout_router, prefix="/bkash", tags=["bKash (simulated)"])
 
 

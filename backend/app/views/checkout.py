@@ -1,5 +1,7 @@
 """Simulated gateway HTML presentation."""
 
+import html
+
 _PINK = "#e2136e"  # bKash brand pink, so the handoff is visually obvious
 
 _PAGE = """
@@ -76,7 +78,13 @@ _PAGE = """
 
 
 def _render(payment_id: str, amount: float, error: str = "") -> str:
-    err_html = f'<div class="err">{error}</div>' if error else ""
+    # Both values originate outside the template (path/query parameters), so
+    # escape them: this page is deliberately served unauthenticated in demo mode.
+    safe_payment_id = html.escape(str(payment_id), quote=True)
+    err_html = f'<div class="err">{html.escape(error)}</div>' if error else ""
     return _PAGE.format(
-        pink=_PINK, payment_id=payment_id, amount=f"{amount:,.2f}", error=err_html
+        pink=_PINK,
+        payment_id=safe_payment_id,
+        amount=f"{amount:,.2f}",
+        error=err_html,
     )

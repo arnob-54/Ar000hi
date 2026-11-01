@@ -58,15 +58,14 @@ class MockBkashGateway(PaymentGateway):
         Caller must hold self._lock. Returns the cache entry, or None if no such
         payment ever existed.
         """
-        from app.models.database import get_db
+        from app.models.database import db_session
         try:
-            conn = get_db()
-            row = conn.execute(
-                """SELECT amount, intent, status, trx_id, wallet_number, failure_reason
-                   FROM bkash_payments WHERE id = ?""",
-                (payment_id,),
-            ).fetchone()
-            conn.close()
+            with db_session() as conn:
+                row = conn.execute(
+                    """SELECT amount, intent, status, trx_id, wallet_number, failure_reason
+                       FROM bkash_payments WHERE id = ?""",
+                    (payment_id,),
+                ).fetchone()
         except Exception:
             return None
         if not row:

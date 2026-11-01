@@ -1,7 +1,7 @@
 # Arooohi — Progress Report
 
 > SRS source: `Misc./Arooohi_Complete_SRS_Report.pdf`. Roadmap + backlog: [`PROJECT_PLAN.md`](./PROJECT_PLAN.md).
-> Statuses: ✅ done · 🔶 partial · ❌ not started. Updated 2026-10-16 (code-smell audit → plan; Helium e2e 53/53; all sprints closed).
+> Statuses: ✅ done · 🔶 partial · ❌ not started. Updated **2026-10-30** (code-smell Phases 1–3 complete; pytest **66/66**; e2e **53/53, 0 console errors**; Phase 4 deferred).
 
 ## 1. Overall
 
@@ -54,7 +54,7 @@ sprint is outstanding, so no downstream work is blocked.
 | 4 — Payments & Earnings | 5/5 ✅ | Splitter (#5), Surge (#13), Wallet & bKash (#9), Driver Earnings (#16), Ride History (#10) — **sprint complete** |
 | 5 — Admin & Quality | 4/4 ✅ | Complaints (#17), Eco (#20), Cancellation (#18), Driver Rating (#7) — **sprint complete** |
 
-## 4. Verification evidence (2026-07-31; re-verified 2026-10-07; browser e2e re-run 2026-10-09)
+## 4. Verification evidence (2026-07-31; re-verified 2026-10-07, 2026-10-09 and 2026-10-30)
 
 ### Backend
 - `import app.main` boots cleanly; `init_db()` idempotent (tables + surge seed + admin).
@@ -72,8 +72,9 @@ sprint is outstanding, so no downstream work is blocked.
 - `npm run lint` — **0 problems** (4 errors found and fixed 2026-10-07; see §5 "Test & repair pass").
 - `npx tsc --noEmit` — **clean**.
 - `npm run build` — **success, all routes compile** (21 routes).
-- Backend pytest — **53/53** on Python 3.14.7 (2026-10-07; re-confirmed
-  2026-10-09 after the `/favicon.ico` fix).
+- Backend pytest — **66/66** on Python 3.14 (2026-10-30; was 53/53 before the
+  Phase 1–2 additions). `pip install -r requirements-dev.txt`, then
+  `python -m pytest -q` from `backend/`.
 
 ### Runtime state (checked recent sessions)
 - **One-command launcher (Session 12):** `./launch.py` / `./launch.sh` / `launch.bat`
@@ -87,13 +88,13 @@ sprint is outstanding, so no downstream work is blocked.
 - `arooohi.db`: carries live user/test data (driver approved, completed ride,
   resolved SOS/complaint) — kept for the demo; pre-test backup at
   `Misc./arooohi.db.backup-20260731-214145`.
-- `git status` — HEAD `fcc3cb8`; **uncommitted** (as of 2026-10-09): the
-  2026-10-07 repair pass (requirements, OpenAPI fixture, 8 backend model
-  files, seed script, 1 test file, 2 frontend pages, `.gitignore`), the
-  participant-helper + notification-service refactor (`participants.py`,
-  `notifications.py`, `rides.py`, `chat.py`), the `/favicon.ico` fix
-  (`app/main.py`), the new `e2e/` harness + `.gitignore` entries, and the
-  docs — see `.arooohi-dev/SESSION.md`.
+- `git status` — HEAD `91a90c0`; the Phase 1–3 work is **uncommitted as of
+  2026-10-30**: backend security/structure changes (XSS escaping, fail-closed
+  `DEMO_MODE`, `db_session()`, `hotspots`/`geo`/`matching`/`cancellation`/
+  `rate_limit` modules, 3 new test files), the frontend shared libs
+  (`lib/client.ts`, `lib/useApi.ts`, `lib/format.ts`, `lib/badges.tsx`), the
+  `dashboard/rides/` feature folder, the `data-testid` + e2e locator migration,
+  `backend/seed_e2e.py`, `.github/workflows/ci.yml`, and these docs.
 
 ### Live browser test (Session 10, Playwright)
 - Full end-to-end run of the live UI on both running servers: **45/45 passed,
@@ -110,7 +111,15 @@ sprint is outstanding, so no downstream work is blocked.
   `rider.live@g.bracu.ac.bd` (Rider Person), `intruder.live@g.bracu.ac.bd`
   (Nosy User); admin `admin@g.bracu.ac.bd` / `admin123`.
 
-### Live browser test (2026-10-09, harness now in-repo) — **53/53**
+### Live browser test (2026-10-09, harness now in-repo; re-run 2026-10-30) — **53/53**
+
+- **2026-10-30 re-run after Phase 3:** fresh seeded DB
+  (`backend/seed_e2e.py`), production build (`npm run build` + `npm start`),
+  `HEADLESS=1 node e2e/live-test.js` → **53/53 passed, 0 console errors**.
+  The suite now locates elements by `data-testid` instead of `.glass-card`
+  scoping. The run found one dead link (`/dashboard/track`, no such route) that
+  made Next prefetch a 404 on every rides render; fixed to `/dashboard`. This
+  was the last console-hygiene failure.
 - The old `/tmp` harness was wiped with the temp dir, so it was rebuilt from
   scratch and **ported into the repo**: `e2e/live-test.js` (Playwright driving
   Helium, `executablePath /opt/helium/chrome`, headed). Run it with
@@ -131,6 +140,61 @@ sprint is outstanding, so no downstream work is blocked.
   backend tests stayed 53/53.
 
 ## 5. Recent fixes (already applied)
+
+### Code-smell fix pass (2026-10-30) — Phases 1–3
+- **XSS**: the demo gateway page escapes `?error=` and the payment id before
+  rendering (`views/checkout.py`); regression tests added.
+- **`DEMO_MODE` now fail-closed**: unset means non-demo. `launch.py`,
+  `seed_sprint3.py` and `tests/conftest.py` opt in explicitly, so local demo
+  behaviour is unchanged while a bare production import refuses the default
+  `SECRET_KEY` and does not mount `/bkash/*`.
+- **Notifications centralized**: `models/notifications.py` uses the
+  `arooohi.notifications` logger instead of `print()`; SOS, trusted-contact
+  sharing and driver cancellation now actually call it.
+- **Chat over-length is rejected**, not truncated: server raises
+  `DomainError(400)` and the WS sends `message_rejected`; the chat page shows an
+  inline error and pre-validates at 500 chars.
+- **Dependencies**: `passlib[bcrypt]` dropped for a direct `bcrypt==5.0.0` pin.
+- **`rides.py` split**: 1159 → 574 lines. New `models/hotspots.py` (data),
+  `geo.py` (pure distance math), `matching.py` (smart matching) and
+  `cancellation.py` (policy/cancel); `rides.py` re-exports the same names, so the
+  OpenAPI contract test still passes.
+- **Connection lifecycle**: new `db_session()` context manager in
+  `models/database.py` (commit on success, rollback + close on error); ~100
+  manual `conn.close()` calls removed across the models.
+- **Seat overbooking closed**: `join_ride` opens `BEGIN IMMEDIATE`, and a
+  concurrent-join pytest asserts only one rider can take the last seat.
+- **Rate limiting isolated**: `models/rate_limit.py` (`SlidingWindowLimiter`) now
+  backs the auth login/OTP limits and the chat spam guard. Single-worker
+  constraint documented in `backend/API.md` and awaiting the Redis swap.
+- **Tests**: suite grew 53 → 66, adding `test_participants.py`,
+  `test_notifications.py` and `test_security_hardening.py`, plus reusable
+  `make_user` / `make_ride` / `add_passenger` fixtures.
+- **e2e**: `HEADLESS=1` is honoured; default stays headed for the demo.
+- **Rides page split (Phase 3)**: `dashboard/rides/page.tsx` 1530 → 320 lines.
+  New `rides/` feature folder: `types.ts`, `useRides.ts` (state + all network
+  calls), `RideCard.tsx`, `StopProgress.tsx`, `OfferForm.tsx`, `MatchTab.tsx`,
+  `JoinRideModal.tsx`, `CancelRideModal.tsx`; the route file is now just the
+  header, tabs and browse layout. UI and copy are unchanged.
+- **Shared frontend libs**: `lib/client.ts` (`apiFetch` injects the token,
+  parses `{detail}`, clears the session + redirects on 401), `lib/useApi.ts`
+  (AbortController-aware fetching), `lib/format.ts` (`fmtMoney`,
+  `fmtMoneyShort`, `fmtDateTime`, `fmtDate`, `fmtPhone`) and `lib/badges.tsx`
+  (status-badge maps). Dashboard, wallet, admin complaints/drivers/SOS,
+  dashboard complaints/driver, earnings/history/receipt and the callback page
+  now use them; the copy-pasted `statusBadge` maps and `taka()` helpers are gone.
+- **e2e selectors**: `data-testid` hooks on ride cards, ride actions, tabs,
+  join/cancel modals and the chat input/send button; `e2e/live-test.js`
+  locates by test id instead of `.glass-card` scoping where possible.
+- **Dead tracking link fixed**: the ride card's "Live Map Tracking" button
+  pointed at `/dashboard/track` (no such route), producing a Next.js prefetch
+  404 on every rides render — the last two console-hygiene failures. It now
+  points at `/dashboard`. e2e is **53/53 with 0 console errors**.
+- **CI**: `.github/workflows/ci.yml` gates every push/PR on backend pytest +
+  frontend lint / `tsc --noEmit` / build. The browser e2e job is
+  `workflow_dispatch`-only (it needs both servers, Chromium and seeded data).
+- **e2e seed**: `backend/seed_e2e.py` idempotently creates the fixed
+  driver/rider/intruder accounts (approved driver profile) the suite logs in as.
 
 - **Surge timezone bug**: hour lookup was UTC, seed is BD-local (UTC+6) → now `Asia/Dhaka` (`surge.py`).
 - **Ride detail permission leak**: `GET /api/rides/{id}` now 403s non-participants (`rides.py`).
@@ -360,24 +424,27 @@ then repairs for everything it exposed. Session log: `.arooohi-dev/SESSION.md`.
 | Area | Gap | Mitigation / plan |
 |------|-----|-------------------|
 | Real-time tracking | GPS is 5s polling, not WebSockets (NFR-1 <2s) | Reuse chat WS as template; planned in `PROJECT_PLAN.md` §4 |
-| Database | SQLite (SRS: PostgreSQL/PostGIS/MongoDB) | Accepted for demo; add WAL + FK indexes now |
+| Database | SQLite (SRS: PostgreSQL/PostGIS/MongoDB) | Accepted for demo; WAL + `busy_timeout` + FK indexes done. Postgres/PostGIS + Alembic tracked as Phase 4 of `Code_issues(smells).md` |
 | Payments | Simulated gateway only; a live bKash client needs merchant credentials + an HTTPS callback | Routes depend on the `PaymentGateway` interface, so a live client can be added without touching routes, tables or pages |
-| Notifications | SOS + auto-share delivery still mocked | ✅ Logic centralized in `app/models/notifications.py` (2026-10-XX); swapping in a real sender (SMS/push) only touches that service |
+| Notifications | SOS + auto-share delivery still mocked | ✅ Logic centralized in `app/models/notifications.py` (2026-10-30); swapping in a real sender (SMS/push) only touches that service |
 | Verification | Manual doc review (SRS: manual/automated) | Accepted; OCR automation out of scope |
 | Mobile | Web only (SRS: React Native) | Future work |
-| Tests | Backend: `backend/tests/` (53 cases, pytest) in `requirements-dev.txt`, `TemporaryDirectory` conftest (runs on any OS). Browser: `e2e/live-test.js` in-repo, 53 checks, verified 53/53 in Helium (2026-10-09) | The old 54-check regression script was lost when `/tmp` was wiped — rebuild from pytest only if a gap shows up; run e2e against BOTH browser engines |
-| Code-smell backlog | Verified smells documented with file:line evidence (XSS on demo gateway, `DEMO_MODE` fail-open, god files, no shared API client, TOCTOU join, in-memory state, …) | 4-phase fix plan in [`Code_issues(smells).md`](./Code_issues(smells).md) — Phase 1 first |
+| Tests | Backend: `backend/tests/` (**66 cases**, pytest) in `requirements-dev.txt`, `TemporaryDirectory` conftest (runs on any OS). Browser: `e2e/live-test.js` in-repo, **53 checks, 53/53 with 0 console errors** on 2026-10-30 (Helium; CI uses Playwright Chromium). | The old 54-check regression script was lost when `/tmp` was wiped — pytest covers that ground. Remaining: run the suite against a second browser engine (Firefox/Zen). |
+| Code-smell backlog | Verified smells documented with file:line evidence (XSS on demo gateway, `DEMO_MODE` fail-open, god files, no shared API client, TOCTOU join, in-memory state, …) | 4-phase plan in [`Code_issues(smells).md`](./Code_issues(smells).md): **Phases 1–3 ✅ done (2026-10-30)**; Phase 4 (SQLite→Postgres, Alembic, Redis-backed limits/rooms, naive-UTC→`timestamptz`) deferred until the platform migration. |
 
 ## 7. Not-yet-fixed defects (tracked in PROJECT_PLAN.md §6)
 
 The 🔴 security/correctness backlog from the Session-8 audit was cleared in the
-Session-9 hardening pass (see §5). Remaining gaps are the accepted deviations in
-§6: console-mock notification *delivery* (logic centralized in
-`app/models/notifications.py`, the sender itself is still a mock), 5s polling tracking (NFR-1 <2s),
-a partial pytest suite (the Playwright e2e harness is now in-repo as
-`e2e/live-test.js` and verified 53/53, but the 54-check regression script was
-lost when `/tmp` was wiped), SQLite instead of
-PostgreSQL/PostGIS, and the demo DBs purged from git history (decision pending).
+Session-9 hardening pass (see §5), and the 2026-10-30 code-smell pass closed
+Phases 1–3. Remaining gaps are the accepted deviations in §6:
+console-mock notification *delivery* (logic centralized in
+`app/models/notifications.py`, the sender itself is still a mock), 5s polling
+tracking instead of WebSockets (NFR-1 <2s), SQLite instead of
+PostgreSQL/PostGIS, a single demo-scale worker (in-memory rate limits + chat
+rooms), the demo DBs still present in git history (decision pending), the
+unbounded client `points` array, and e2e having run only on Chromium/Helium so
+far. Phase 4 of [`Code_issues(smells).md`](./Code_issues(smells).md) collects the
+DB/migration items.
 
 ## 8. Next actions (priority order)
 
@@ -389,16 +456,24 @@ PostgreSQL/PostGIS, and the demo DBs purged from git history (decision pending).
    running the (now in-repo) e2e harness against a second browser engine.
    - Shared `is_ride_participant()` helper created and used across `rides.py` + `chat.py`
    - Mock notifications service consolidated into `app/models/notifications.py`
-4. ~~Make the committed test suite runnable~~ — **done 2026-10**: `pytest` + `httpx` pinned in `requirements-dev.txt`, conftest derives the DB path from `TemporaryDirectory`, and the OpenAPI contract fixture was regenerated for current FastAPI/Pydantic (53/53 green on Python 3.14).
+4. ~~Make the committed test suite runnable~~ — **done 2026-10**: `pytest` + `httpx` pinned in `requirements-dev.txt`, conftest derives the DB path from `TemporaryDirectory`, and the OpenAPI contract fixture was regenerated for current FastAPI/Pydantic (now 66/66 on Python 3.14).
 5. ~~Extend coverage: port the Playwright e2e harness~~ — **done 2026-10-09**:
-   rebuilt as `e2e/live-test.js` (53 checks, Helium-verified 53/53). The
-   54-check regression script (`/tmp/opencode/test_backend.py`) was lost with
-   the temp dir — the committed pytest suite covers the same ground; rebuild
-   only if a gap appears. Remaining: run the e2e against BOTH browser engines.
+   rebuilt as `e2e/live-test.js` (53 checks, Helium-verified 53/53); re-verified
+   53/53 with 0 console errors on 2026-10-30 after the `data-testid` migration.
+   The 54-check regression script (`/tmp/opencode/test_backend.py`) was lost
+   with the temp dir — the committed pytest suite covers the same ground;
+   rebuild only if a gap appears. Remaining: run the e2e against BOTH browser
+   engines.
 6. Upgrade live tracking to WebSockets (NFR-1).
 7. Decide on `git filter-repo` to purge the demo DBs from the public repo's history.
 8. ✅ Done — Sprint 5 (Driver Rating #7, Cancellation #18) closed 2026-09-01; all five sprints complete.
-9. Work the code-smell fix plan in [`Code_issues(smells).md`](./Code_issues(smells).md):
-   start with Phase 1 (quick wins — includes the reflected XSS on the demo
-   gateway page and the `DEMO_MODE` fail-open default) before any wider
-   deployment; then Phase 2/3 structure sessions.
+9. ✅ Done 2026-10-30 — code-smell Phases 1–3 in
+   [`Code_issues(smells).md`](./Code_issues(smells).md): backend
+   security/structure, the frontend shared libs + rides split, the e2e
+   `data-testid` migration, CI and the e2e seed script. Phase 4 waits for the
+   Postgres/Redis migration.
+10. **Commit the Phase 1–3 work** (70 files currently uncommitted), then keep
+    Phase 4 bundled with the database migration rather than as a standalone pass.
+11. Cheap follow-ups once committed: move `init_db()` to the FastAPI lifespan,
+    cap/retain tracking points, run e2e on Firefox, and promote the
+    `workflow_dispatch` e2e job to a nightly `schedule`.

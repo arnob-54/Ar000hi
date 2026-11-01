@@ -41,7 +41,9 @@ React ride form (View)
   → React shows requested seat / top-up notice (View)
 ```
 
-1. Open [`frontend/app/dashboard/rides/page.tsx`](frontend/app/dashboard/rides/page.tsx).
+1. Open [`frontend/app/dashboard/rides/`](frontend/app/dashboard/rides/): the
+   route file is only the layout, `JoinRideModal.tsx` collects the seat count and
+   pickup/drop-off stops, and `useRides.ts` holds the state + API calls.
    The UI collects the selected seat count and pickup/drop-off choices.
 2. Open [`backend/app/controllers/rides.py`](backend/app/controllers/rides.py).
    `@router.post(...)` connects the URL to `join_ride`. `Depends(get_current_user_id)`
@@ -66,16 +68,21 @@ All five use [`controllers/rides.py`](backend/app/controllers/rides.py),
 
 | Feature | Controller entry point | Model implementation to explain |
 | --- | --- | --- |
-| Campus Zone Smart Matching | `GET /api/rides/match` → `match_rides` | `ZONES`, `_haversine_km`, and `match_rides`: route/nearby-zone matching, timing and eligibility filtering, then match scoring. |
+| Campus Zone Smart Matching | `GET /api/rides/match` → `match_rides` | [`models/matching.py`](backend/app/models/matching.py) (`match_rides`) plus `ZONES` / `_haversine_km` from `hotspots.py` and `geo.py`: route/nearby-zone matching, timing and eligibility filtering, then match scoring. |
 | Multi-Stop Ride Support | `create_ride`, `join_ride`, `update_stop_status` | Persist ordered `ride_stops`; validate pickup before drop-off; record stop progress. |
 | Female-Only Ride Mode | `create_ride`, `join_ride`, `match_rides`, `list_rides` | Check stored user gender and the ride's `female_only` flag. Enforcement happens in the backend, not only through the UI toggle. |
 | Scheduled Ride Booking | `create_ride`, `match_rides`, `list_rides` | Validate a future ISO timestamp, persist `scheduled_at`, return it for display and use timing filters when matching. Scheduling does not introduce an automatic-start background worker. |
 | Campus Pickup Hotspots | `GET /api/rides/hotspots` → `get_hotspots` | Return `HOTSPOTS`; React renders selectors and [`TrackingMap.tsx`](frontend/components/TrackingMap.tsx) markers. |
 
-To edit hotspot names or coordinates, now edit `HOTSPOTS` in
-`backend/app/models/rides.py`. Also check the explicit `ZONES` aliases below it:
-some override coordinates derived from `HOTSPOTS`. Your existing locations and
-map configuration were retained during the move.
+To edit hotspot names or coordinates, edit `HOTSPOTS` in
+[`backend/app/models/hotspots.py`](backend/app/models/hotspots.py). Also check the
+explicit `ZONES` aliases below it: some override coordinates derived from
+`HOTSPOTS`. Distance helpers live in
+[`models/geo.py`](backend/app/models/geo.py), smart matching in
+[`models/matching.py`](backend/app/models/matching.py) and the cancellation
+policy in [`models/cancellation.py`](backend/app/models/cancellation.py);
+`models/rides.py` re-exports those names so existing imports keep working. Your
+existing locations and map configuration were retained during the move.
 
 ## FastAPI pieces, briefly
 

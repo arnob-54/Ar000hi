@@ -2,6 +2,8 @@
 import { useState, useEffect, useCallback } from "react";
 
 import { API } from "@/lib/api";
+import { COMPLAINT_STATUS_BADGE, badgeClass } from "@/lib/badges";
+import { fmtDate } from "@/lib/format";
 
 interface Complaint {
   id: string;
@@ -48,13 +50,6 @@ export default function ComplaintsPage() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const statusBadge: Record<string, string> = {
-    open: "badge-warning",
-    under_review: "badge-info",
-    resolved: "badge-success",
-    dismissed: "badge-accent",
   };
 
   const categoryIcon: Record<string, string> = {
@@ -128,10 +123,10 @@ export default function ComplaintsPage() {
                 <span style={{ marginRight: 8 }}>{categoryIcon[c.category] || "📌"}</span>
                 <span className="complaint-subject">{c.subject}</span>
               </div>
-              <span className={`badge ${statusBadge[c.status] || "badge-info"}`}>{c.status.replace("_", " ")}</span>
+              <span className={`badge ${badgeClass(COMPLAINT_STATUS_BADGE, c.status)}`}>{c.status.replace("_", " ")}</span>
             </div>
             <div className="complaint-meta">
-              {c.category} • Filed on {new Date(c.created_at).toLocaleDateString()}
+              {c.category} • Filed on {fmtDate(c.created_at)}
             </div>
             <div className="complaint-body">{c.description}</div>
             {c.admin_notes && (

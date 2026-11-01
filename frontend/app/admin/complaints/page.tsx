@@ -2,6 +2,8 @@
 import { useEffect, useState, useCallback } from "react";
 
 import { API } from "@/lib/api";
+import { COMPLAINT_STATUS_BADGE, badgeClass } from "@/lib/badges";
+import { fmtDateTime } from "@/lib/format";
 
 interface Complaint {
   id: string;
@@ -44,7 +46,6 @@ export default function AdminComplaintsPage() {
 
   const filtered = filter === "all" ? complaints : complaints.filter(c => c.status === filter);
 
-  const statusBadge: Record<string, string> = { open: "badge-warning", under_review: "badge-info", resolved: "badge-success", dismissed: "badge-accent" };
   const categoryIcon: Record<string, string> = { safety: "🛡️", misconduct: "⚠️", vehicle: "🚗", payment: "💳", other: "📌" };
 
   return (
@@ -77,10 +78,10 @@ export default function AdminComplaintsPage() {
                 <span style={{ marginRight: 8 }}>{categoryIcon[c.category] || "📌"}</span>
                 <span className="complaint-subject">{c.subject}</span>
               </div>
-              <span className={`badge ${statusBadge[c.status]}`}>{c.status.replace("_", " ")}</span>
+              <span className={`badge ${badgeClass(COMPLAINT_STATUS_BADGE, c.status)}`}>{c.status.replace("_", " ")}</span>
             </div>
             <div className="complaint-meta">
-              By <strong>{c.reporter_name}</strong> ({c.reporter_email}) • {c.category} • {new Date(c.created_at).toLocaleString()}
+              By <strong>{c.reporter_name}</strong> ({c.reporter_email}) • {c.category} • {fmtDateTime(c.created_at)}
             </div>
             <div className="complaint-body">{c.description}</div>
 

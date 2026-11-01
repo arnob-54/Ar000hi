@@ -2,6 +2,7 @@
 import { useEffect, useState, useCallback } from "react";
 
 import { API } from "@/lib/api";
+import { fmtDateTime } from "@/lib/format";
 
 interface SosAlert {
   id: string;
@@ -68,7 +69,7 @@ export default function AdminSOSPage() {
               </div>
               <div style={{ padding: 12, background: "var(--surface)", borderRadius: "var(--radius-md)", fontSize: "0.85rem" }}>
                 <div style={{ color: "var(--text-tertiary)", fontSize: "0.7rem", marginBottom: 4 }}>🕐 TIME</div>
-                {new Date(a.created_at).toLocaleString()}
+                {fmtDateTime(a.created_at)}
               </div>
             </div>
 

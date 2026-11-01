@@ -14,6 +14,20 @@ API URLs are unchanged. See the [MVC demonstration guide](../MVC_ARCHITECTURE.md
 
 All endpoints return JSON. Errors return `{"detail": "..."}` with 4xx/5xx status.
 
+## Deployment constraints (demo build)
+
+- **Run a single uvicorn worker.** Login/OTP rate limits, WebSocket chat rooms and
+  the simulated gateway's payment state live in process memory, so
+  `--workers > 1` would make them silently inconsistent. The `redis`-backed
+  replacement lands with the Postgres migration (see `Code_issues(smells).md`,
+  Phase 4).
+- **`DEMO_MODE` is fail-closed.** Unset or `0` disables demo behaviour: no OTP
+  hints in responses and no `/bkash/*` routes. `launch.py` and
+  `seed_sprint3.py` set `DEMO_MODE=1` for local runs; production must set it to
+  `0` **and** provide `SECRET_KEY` (the default secret is refused).
+- **`DATABASE_PATH`** points at the SQLite file (defaults to `backend/arooohi.db`).
+  Tests override it with a temporary file.
+
 ----
 
 ## 1. Trusted Contacts  (`/api/contacts`)

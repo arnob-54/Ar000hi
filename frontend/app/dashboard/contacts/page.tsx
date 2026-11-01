@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 
 import { API } from "@/lib/api";
+import { fmtDateTime } from "@/lib/format";
 
 interface ContactInfo {
   id: string;
@@ -160,7 +161,7 @@ export default function TrustedContactsPage() {
           {shares.map(s => (
             <div key={s.id} style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderBottom: "1px solid rgba(100,120,200,0.06)", fontSize: "0.85rem" }}>
               <span style={{ color: "var(--text-secondary)" }}>
-                {new Date(s.created_at).toLocaleString()} · {s.contact_count} contact(s) notified
+                {fmtDateTime(s.created_at)} · {s.contact_count} contact(s) notified
               </span>
               <code style={{ fontSize: "0.75rem", color: "var(--primary)" }}>{s.share_url}</code>
             </div>

@@ -1,7 +1,7 @@
 """Surge model: business rules and persistence, independent of FastAPI."""
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from app.models.database import get_db
+from app.models.database import db_session
 from app.models.errors import DomainError
 
 MIN_SURGE = 1.0
@@ -43,17 +43,16 @@ def get_current_surge(user_id: str):
     Improvement note:
     - The surge state remains a lightweight live demand indicator for the ride planner view.
     """
-    conn = get_db()
-    multiplier, demand, active = compute_current_multiplier(conn)
-    conn.close()
-    return {
-        "hour": datetime.now(BD_TZ).hour,
-        "demand": demand,
-        "active_rides": active,
-        "multiplier": multiplier,
-        "label": _label_for(multiplier),
-        "message": f"Surge ×{multiplier} — {_label_for(multiplier)} hours",
-    }
+    with db_session() as conn:
+        multiplier, demand, active = compute_current_multiplier(conn)
+        return {
+            "hour": datetime.now(BD_TZ).hour,
+            "demand": demand,
+            "active_rides": active,
+            "multiplier": multiplier,
+            "label": _label_for(multiplier),
+            "message": f"Surge ×{multiplier} — {_label_for(multiplier)} hours",
+        }
 
 
 def get_surge_schedule(user_id: str):
@@ -63,24 +62,23 @@ def get_surge_schedule(user_id: str):
     current hour. Other hours show their seeded baseline so the schedule reads as a
     proper forecast instead of shifting all 24 hours by the same amount.
     """
-    conn = get_db()
-    rows = conn.execute("SELECT hour, demand, label FROM surge_config ORDER BY hour ASC").fetchall()
-    active = conn.execute("SELECT COUNT(*) AS c FROM rides WHERE status = 'active'").fetchone()["c"]
-    current_hour = datetime.now(BD_TZ).hour
-    conn.close()
+    with db_session() as conn:
+        rows = conn.execute("SELECT hour, demand, label FROM surge_config ORDER BY hour ASC").fetchall()
+        active = conn.execute("SELECT COUNT(*) AS c FROM rides WHERE status = 'active'").fetchone()["c"]
+        current_hour = datetime.now(BD_TZ).hour
 
-    schedule = []
-    for r in rows:
-        hour = r["hour"]
-        is_current = hour == current_hour
-        # Live bump only on the current hour; elsewhere baseline only.
-        m = _compute_multiplier(r["demand"], active if is_current else 0)
-        schedule.append({
-            "hour": hour,
-            "demand": r["demand"],
-            "multiplier": m,
-            "label": _label_for(m),
-            "is_current": is_current,
-        })
+        schedule = []
+        for r in rows:
+            hour = r["hour"]
+            is_current = hour == current_hour
+            # Live bump only on the current hour; elsewhere baseline only.
+            m = _compute_multiplier(r["demand"], active if is_current else 0)
+            schedule.append({
+                "hour": hour,
+                "demand": r["demand"],
+                "multiplier": m,
+                "label": _label_for(m),
+                "is_current": is_current,
+            })
 
-    return {"schedule": schedule}
+        return {"schedule": schedule}

@@ -3,7 +3,7 @@ import os
 import uuid
 from datetime import datetime as dt, timezone
 from app.models import ledger as ws
-from app.models.database import get_db
+from app.models.database import db_session
 from app.payments import GatewayError, get_gateway
 from app.schemas.wallet import TopUpRequest, ExecuteRequest, WithdrawRequest
 from app.models.errors import DomainError
@@ -32,34 +32,32 @@ def _tx_json(r) -> dict:
 
 def get_wallet(user_id: str):
     """Balance plus the 10 most recent ledger entries."""
-    conn = get_db()
-    ws.get_or_create_wallet(conn, user_id)
-    conn.commit()
-    balance = ws.balance_of(conn, user_id)
-    rows = conn.execute(
-        """SELECT * FROM transactions WHERE user_id = ?
-           ORDER BY created_at DESC, rowid DESC LIMIT 10""",
-        (user_id,),
-    ).fetchall()
-    conn.close()
-    return {
-        "balance": balance,
-        "currency": "BDT",
-        "recent": [_tx_json(r) for r in rows],
-    }
+    with db_session() as conn:
+        ws.get_or_create_wallet(conn, user_id)
+        conn.commit()
+        balance = ws.balance_of(conn, user_id)
+        rows = conn.execute(
+            """SELECT * FROM transactions WHERE user_id = ?
+               ORDER BY created_at DESC, rowid DESC LIMIT 10""",
+            (user_id,),
+        ).fetchall()
+        return {
+            "balance": balance,
+            "currency": "BDT",
+            "recent": [_tx_json(r) for r in rows],
+        }
 
 
 def list_transactions(user_id: str, limit: int=50):
     """Full ledger history — also the data source for receipts (#10)."""
     limit = max(1, min(limit, 200))
-    conn = get_db()
-    rows = conn.execute(
-        """SELECT * FROM transactions WHERE user_id = ?
-           ORDER BY created_at DESC, rowid DESC LIMIT ?""",
-        (user_id, limit),
-    ).fetchall()
-    conn.close()
-    return [_tx_json(r) for r in rows]
+    with db_session() as conn:
+        rows = conn.execute(
+            """SELECT * FROM transactions WHERE user_id = ?
+               ORDER BY created_at DESC, rowid DESC LIMIT ?""",
+            (user_id, limit),
+        ).fetchall()
+        return [_tx_json(r) for r in rows]
 
 
 def start_topup(body: TopUpRequest, user_id: str):
@@ -78,22 +76,21 @@ def start_topup(body: TopUpRequest, user_id: str):
     except GatewayError as e:
         raise DomainError(status_code=502, detail=f"Payment gateway unavailable: {e}")
 
-    conn = get_db()
-    conn.execute(
-        """INSERT INTO bkash_payments (id, user_id, amount, intent, status)
-           VALUES (?, ?, ?, 'topup', ?)""",
-        (result.payment_id, user_id, amount, result.status),
-    )
-    conn.commit()
-    conn.close()
+    with db_session() as conn:
+        conn.execute(
+            """INSERT INTO bkash_payments (id, user_id, amount, intent, status)
+               VALUES (?, ?, ?, 'topup', ?)""",
+            (result.payment_id, user_id, amount, result.status),
+        )
+        conn.commit()
 
-    return {
-        "payment_id": result.payment_id,
-        "amount": amount,
-        "status": result.status,
-        "checkout_url": result.checkout_url,
-        "gateway": gateway.name,
-    }
+        return {
+            "payment_id": result.payment_id,
+            "amount": amount,
+            "status": result.status,
+            "checkout_url": result.checkout_url,
+            "gateway": gateway.name,
+        }
 
 
 def execute_topup(body: ExecuteRequest, user_id: str):
@@ -102,99 +99,90 @@ def execute_topup(body: ExecuteRequest, user_id: str):
     Idempotent twice over: the gateway returns the same trxID on re-execute, and
     uq_transactions_payment stops a second ledger row for the same paymentID.
     """
-    conn = get_db()
-    payment = conn.execute(
-        "SELECT * FROM bkash_payments WHERE id = ? AND user_id = ?",
-        (body.payment_id, user_id),
-    ).fetchone()
-    if not payment:
-        conn.close()
-        raise DomainError(status_code=404, detail="Payment not found")
+    with db_session() as conn:
+        payment = conn.execute(
+            "SELECT * FROM bkash_payments WHERE id = ? AND user_id = ?",
+            (body.payment_id, user_id),
+        ).fetchone()
+        if not payment:
+            raise DomainError(status_code=404, detail="Payment not found")
 
-    existing = conn.execute(
-        "SELECT * FROM transactions WHERE payment_id = ?", (body.payment_id,)
-    ).fetchone()
-    if existing:
-        balance = ws.balance_of(conn, user_id)
-        conn.close()
-        return {"message": "Top-up already credited", "status": "completed",
-                "amount": round(existing["amount"], 2), "balance": balance,
-                "trx_id": payment["trx_id"], "duplicate": True}
+        existing = conn.execute(
+            "SELECT * FROM transactions WHERE payment_id = ?", (body.payment_id,)
+        ).fetchone()
+        if existing:
+            balance = ws.balance_of(conn, user_id)
+            return {"message": "Top-up already credited", "status": "completed",
+                    "amount": round(existing["amount"], 2), "balance": balance,
+                    "trx_id": payment["trx_id"], "duplicate": True}
 
-    try:
-        result = get_gateway().execute_payment(body.payment_id)
-    except GatewayError as e:
-        conn.close()
-        raise DomainError(status_code=502, detail=f"Payment gateway unavailable: {e}")
+        try:
+            result = get_gateway().execute_payment(body.payment_id)
+        except GatewayError as e:
+            raise DomainError(status_code=502, detail=f"Payment gateway unavailable: {e}")
 
-    if not result.is_success:
-        conn.execute(
-            "UPDATE bkash_payments SET status = ?, failure_reason = ? WHERE id = ?",
-            (result.status, result.failure_reason, body.payment_id),
-        )
-        conn.commit()
-        conn.close()
-        raise DomainError(
-            status_code=402,
-            detail=result.failure_reason or f"Payment {result.status}",
-        )
-
-    amount = round(result.amount or payment["amount"], 2)
-    try:
-        with ws.atomic(conn):
-            ws.post(conn, user_id, "topup", amount,
-                    payment_id=body.payment_id,
-                    note=f"bKash top-up (trx {result.trx_id})")
+        if not result.is_success:
             conn.execute(
-                "UPDATE bkash_payments SET status = 'completed', trx_id = ? WHERE id = ?",
-                (result.trx_id, body.payment_id),
+                "UPDATE bkash_payments SET status = ?, failure_reason = ? WHERE id = ?",
+                (result.status, result.failure_reason, body.payment_id),
             )
-    except Exception:
-        conn.close()
-        raise DomainError(status_code=500, detail="Could not credit the wallet")
+            conn.commit()
+            raise DomainError(
+                status_code=402,
+                detail=result.failure_reason or f"Payment {result.status}",
+            )
 
-    balance = ws.balance_of(conn, user_id)
-    conn.close()
-    return {"message": "Top-up successful", "status": "completed", "amount": amount,
-            "trx_id": result.trx_id, "balance": balance, "duplicate": False}
+        amount = round(result.amount or payment["amount"], 2)
+        try:
+            with ws.atomic(conn):
+                ws.post(conn, user_id, "topup", amount,
+                        payment_id=body.payment_id,
+                        note=f"bKash top-up (trx {result.trx_id})")
+                conn.execute(
+                    "UPDATE bkash_payments SET status = 'completed', trx_id = ? WHERE id = ?",
+                    (result.trx_id, body.payment_id),
+                )
+        except Exception:
+            raise DomainError(status_code=500, detail="Could not credit the wallet")
+
+        balance = ws.balance_of(conn, user_id)
+        return {"message": "Top-up successful", "status": "completed", "amount": amount,
+                "trx_id": result.trx_id, "balance": balance, "duplicate": False}
 
 
 def payment_status(payment_id: str, user_id: str):
     """Reconciliation: ask the gateway what really happened to an interrupted payment."""
-    conn = get_db()
-    payment = conn.execute(
-        "SELECT * FROM bkash_payments WHERE id = ? AND user_id = ?",
-        (payment_id, user_id),
-    ).fetchone()
-    if not payment:
-        conn.close()
-        raise DomainError(status_code=404, detail="Payment not found")
+    with db_session() as conn:
+        payment = conn.execute(
+            "SELECT * FROM bkash_payments WHERE id = ? AND user_id = ?",
+            (payment_id, user_id),
+        ).fetchone()
+        if not payment:
+            raise DomainError(status_code=404, detail="Payment not found")
 
-    try:
-        remote = get_gateway().query_payment(payment_id)
-    except GatewayError as e:
-        conn.close()
-        raise DomainError(status_code=502, detail=f"Payment gateway unavailable: {e}")
+        try:
+            remote = get_gateway().query_payment(payment_id)
+        except GatewayError as e:
+            raise DomainError(status_code=502, detail=f"Payment gateway unavailable: {e}")
 
-    credited = conn.execute(
-        "SELECT 1 FROM transactions WHERE payment_id = ? LIMIT 1", (payment_id,)
-    ).fetchone() is not None
+        credited = conn.execute(
+            "SELECT 1 FROM transactions WHERE payment_id = ? LIMIT 1", (payment_id,)
+        ).fetchone() is not None
 
-    if remote.status != payment["status"]:
-        conn.execute("UPDATE bkash_payments SET status = ? WHERE id = ?",
-                     (remote.status, payment_id))
-        conn.commit()
-    conn.close()
+        if remote.status != payment["status"]:
+            conn.execute("UPDATE bkash_payments SET status = ? WHERE id = ?",
+                         (remote.status, payment_id))
+            conn.commit()
 
-    return {
-        "payment_id": payment_id,
-        "local_status": payment["status"],
-        "gateway_status": remote.status,
-        "credited": credited,
-        "amount": round(payment["amount"], 2),
-        "failure_reason": remote.failure_reason,
-        "recoverable": remote.status == "authorized" and not credited,
-    }
+        return {
+            "payment_id": payment_id,
+            "local_status": payment["status"],
+            "gateway_status": remote.status,
+            "credited": credited,
+            "amount": round(payment["amount"], 2),
+            "failure_reason": remote.failure_reason,
+            "recoverable": remote.status == "authorized" and not credited,
+        }
 
 
 def withdraw(body: WithdrawRequest, user_id: str):
@@ -203,37 +191,34 @@ def withdraw(body: WithdrawRequest, user_id: str):
     if amount <= 0:
         raise DomainError(status_code=400, detail="Withdrawal amount must be positive")
 
-    conn = get_db()
-    balance = ws.balance_of(conn, user_id)
-    if amount > balance:
-        conn.close()
-        raise DomainError(
-            status_code=402,
-            detail=f"Insufficient balance: you have {balance:.2f} BDT",
-        )
-
-    payout_id = "PO" + uuid.uuid4().hex[:12].upper()
-    try:
-        with ws.atomic(conn):
-            ws.post(conn, user_id, "withdrawal", -amount,
-                    payment_id=payout_id,
-                    note=f"Cash-out to bKash {body.wallet_number or '(unspecified)'}")
-            conn.execute(
-                """INSERT INTO bkash_payments
-                   (id, user_id, amount, intent, status, trx_id, wallet_number)
-                   VALUES (?, ?, ?, 'withdrawal', 'completed', ?, ?)""",
-                (payout_id, user_id, amount, payout_id, body.wallet_number),
+    with db_session() as conn:
+        balance = ws.balance_of(conn, user_id)
+        if amount > balance:
+            raise DomainError(
+                status_code=402,
+                detail=f"Insufficient balance: you have {balance:.2f} BDT",
             )
-    except ValueError as e:
-        conn.close()
-        raise DomainError(status_code=402, detail=str(e))
 
-    new_balance = ws.balance_of(conn, user_id)
-    conn.close()
-    print(f"\n[bKash PAYOUT] {amount:.2f} BDT -> {body.wallet_number or 'wallet'} "
-          f"(ref {payout_id})\n")
-    return {"message": f"{amount:.2f} BDT sent to your bKash account",
-            "payout_id": payout_id, "balance": new_balance}
+        payout_id = "PO" + uuid.uuid4().hex[:12].upper()
+        try:
+            with ws.atomic(conn):
+                ws.post(conn, user_id, "withdrawal", -amount,
+                        payment_id=payout_id,
+                        note=f"Cash-out to bKash {body.wallet_number or '(unspecified)'}")
+                conn.execute(
+                    """INSERT INTO bkash_payments
+                       (id, user_id, amount, intent, status, trx_id, wallet_number)
+                       VALUES (?, ?, ?, 'withdrawal', 'completed', ?, ?)""",
+                    (payout_id, user_id, amount, payout_id, body.wallet_number),
+                )
+        except ValueError as e:
+            raise DomainError(status_code=402, detail=str(e))
+
+        new_balance = ws.balance_of(conn, user_id)
+        print(f"\n[bKash PAYOUT] {amount:.2f} BDT -> {body.wallet_number or 'wallet'} "
+              f"(ref {payout_id})\n")
+        return {"message": f"{amount:.2f} BDT sent to your bKash account",
+                "payout_id": payout_id, "balance": new_balance}
 
 
 def reconcile(user_id: str):
@@ -242,22 +227,21 @@ def reconcile(user_id: str):
     A mismatch means a bug wrote one without the other, and is worth surfacing
     loudly rather than letting it drift silently.
     """
-    conn = get_db()
-    ws.get_or_create_wallet(conn, user_id)
-    conn.commit()
-    stored = ws.balance_of(conn, user_id)
-    ledger = ws.ledger_sum(conn, user_id)
-    count = conn.execute(
-        "SELECT COUNT(*) AS c FROM transactions WHERE user_id = ?", (user_id,)
-    ).fetchone()["c"]
-    conn.close()
+    with db_session() as conn:
+        ws.get_or_create_wallet(conn, user_id)
+        conn.commit()
+        stored = ws.balance_of(conn, user_id)
+        ledger = ws.ledger_sum(conn, user_id)
+        count = conn.execute(
+            "SELECT COUNT(*) AS c FROM transactions WHERE user_id = ?", (user_id,)
+        ).fetchone()["c"]
 
-    balanced = abs(stored - ledger) < 0.005
-    return {
-        "stored_balance": stored,
-        "ledger_sum": ledger,
-        "difference": round(stored - ledger, 2),
-        "transaction_count": count,
-        "status": "balanced" if balanced else "MISMATCH",
-        "checked_at": dt.now(timezone.utc).replace(tzinfo=None).isoformat(),
-    }
+        balanced = abs(stored - ledger) < 0.005
+        return {
+            "stored_balance": stored,
+            "ledger_sum": ledger,
+            "difference": round(stored - ledger, 2),
+            "transaction_count": count,
+            "status": "balanced" if balanced else "MISMATCH",
+            "checked_at": dt.now(timezone.utc).replace(tzinfo=None).isoformat(),
+        }

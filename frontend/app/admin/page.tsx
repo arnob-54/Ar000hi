@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 
 import { API } from "@/lib/api";
+import { fmtDateTime } from "@/lib/format";
 
 interface ComplaintStats {
   total: number;
@@ -91,7 +92,7 @@ export default function AdminDashboard() {
                 <div>
                   <div style={{ fontWeight: 500, fontSize: "0.85rem" }}>{a.user_name}</div>
                   <div style={{ fontSize: "0.75rem", color: "var(--text-tertiary)" }}>
-                    {new Date(a.created_at).toLocaleString()} • 📍 {a.lat.toFixed(4)}, {a.lng.toFixed(4)}
+                    {fmtDateTime(a.created_at)} • 📍 {a.lat.toFixed(4)}, {a.lng.toFixed(4)}
                   </div>
                 </div>
                 <span className={`badge ${a.status === "active" ? "badge-danger" : "badge-success"}`}>{a.status}</span>

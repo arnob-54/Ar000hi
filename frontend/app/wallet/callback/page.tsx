@@ -3,6 +3,7 @@ import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { API } from "@/lib/api";
+import { fmtMoney } from "@/lib/format";
 
 // Feature 9: the merchant-side return leg of the bKash checkout.
 //
@@ -60,7 +61,7 @@ function CallbackInner() {
         setMessage(
           data.duplicate
             ? "This payment was already credited to your wallet."
-            : `৳${Number(data.amount).toFixed(2)} added to your wallet.`
+            : `${fmtMoney(Number(data.amount))} added to your wallet.`
         );
       } catch {
         setPhase("failed");
@@ -98,7 +99,7 @@ function CallbackInner() {
 
         {phase === "success" && amount !== null && (
           <div style={{ fontSize: "2rem", fontWeight: 800, color: "var(--success)", marginBottom: 20 }}>
-            + ৳{amount.toFixed(2)}
+            + {fmtMoney(amount)}
           </div>
         )}
 

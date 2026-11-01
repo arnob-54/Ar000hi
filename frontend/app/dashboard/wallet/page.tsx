@@ -1,7 +1,8 @@
 "use client";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
-import { API } from "@/lib/api";
+import { ApiError, apiFetch } from "@/lib/client";
+import { fmtDateTime, fmtMoney } from "@/lib/format";
 
 // Feature 9: Wallet & bKash Integration
 // Prepaid wallet — the gateway is only touched at the edges (top-up, cash-out).
@@ -67,20 +68,16 @@ export default function WalletPage() {
   });
 
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
-  const headers = useMemo(
-    () => ({ Authorization: `Bearer ${token}`, "Content-Type": "application/json" }),
-    [token]
-  );
 
   // Pure fetch — returns data instead of setting state, so the effect below can
   // do its setState inside a promise callback (react-hooks/set-state-in-effect).
   const fetchWallet = useCallback(async () => {
     const [w, h] = await Promise.all([
-      fetch(`${API}/wallet`, { headers }).then(r => r.json()),
-      fetch(`${API}/wallet/transactions?limit=50`, { headers }).then(r => r.json()),
+      apiFetch<WalletInfo>("/wallet"),
+      apiFetch<Transaction[] | null>("/wallet/transactions?limit=50"),
     ]);
-    return { w: w as WalletInfo, h: (Array.isArray(h) ? h : []) as Transaction[] };
-  }, [headers]);
+    return { w, h: (Array.isArray(h) ? h : []) as Transaction[] };
+  }, []);
 
   const load = useCallback(async () => {
     const { w, h } = await fetchWallet();
@@ -114,15 +111,17 @@ export default function WalletPage() {
     setBusy(true);
     setNotice(null);
     try {
-      const res = await fetch(`${API}/wallet/topup`, {
-        method: "POST", headers, body: JSON.stringify({ amount: value }),
+      const data = await apiFetch<{ checkout_url: string }>("/wallet/topup", {
+        method: "POST",
+        body: { amount: value },
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "Could not start the top-up");
       // Leave Arooohi for the gateway's own page — exactly as a real checkout does.
       window.location.href = data.checkout_url;
     } catch (err) {
-      setNotice({ type: "error", text: err instanceof Error ? err.message : String(err) });
+      setNotice({
+        type: "error",
+        text: err instanceof ApiError ? err.message : "Could not start the top-up",
+      });
       setBusy(false);
     }
   };
@@ -136,17 +135,18 @@ export default function WalletPage() {
     setBusy(true);
     setNotice(null);
     try {
-      const res = await fetch(`${API}/wallet/withdraw`, {
-        method: "POST", headers,
-        body: JSON.stringify({ amount: value, wallet_number: cashNumber }),
+      const data = await apiFetch<{ message: string }>("/wallet/withdraw", {
+        method: "POST",
+        body: { amount: value, wallet_number: cashNumber },
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "Withdrawal failed");
       setNotice({ type: "success", text: data.message });
       setCashOut("");
       await load();
     } catch (err) {
-      setNotice({ type: "error", text: err instanceof Error ? err.message : String(err) });
+      setNotice({
+        type: "error",
+        text: err instanceof ApiError ? err.message : "Withdrawal failed",
+      });
     } finally {
       setBusy(false);
     }
@@ -154,8 +154,8 @@ export default function WalletPage() {
 
   const runReconcile = async () => {
     try {
-      const res = await fetch(`${API}/wallet/reconcile`, { headers });
-      setRecon(await res.json());
+      const data = await apiFetch<Reconciliation>("/wallet/reconcile");
+      setRecon(data);
     } catch {
       setNotice({ type: "error", text: "Reconciliation check failed." });
     }
@@ -196,8 +196,8 @@ export default function WalletPage() {
         <div style={{ fontSize: "0.78rem", color: "var(--text-tertiary)", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 600 }}>
           Available Balance
         </div>
-        <div style={{ fontSize: "2.8rem", fontWeight: 800, color: "var(--primary)", margin: "6px 0 2px" }}>
-          ৳ {wallet.balance.toFixed(2)}
+        <div style={{ fontSize: "2.8rem", fontWeight: 800, color: "var(--primary)", margin: "6px 0 2px" }} data-testid="wallet-balance">
+          {fmtMoney(wallet.balance)}
         </div>
         <div style={{ fontSize: "0.8rem", color: "var(--text-tertiary)" }}>
           {history.length} transaction{history.length === 1 ? "" : "s"} on record
@@ -282,9 +282,9 @@ export default function WalletPage() {
               color: recon.status === "balanced" ? "var(--success)" : "var(--danger)",
             }}
           >
-            {recon.status === "balanced" ? "✅ Balanced" : "⚠️ MISMATCH"} — stored ৳{recon.stored_balance.toFixed(2)} vs
-            ledger ৳{recon.ledger_sum.toFixed(2)} across {recon.transaction_count} entries
-            (difference ৳{recon.difference.toFixed(2)})
+            {recon.status === "balanced" ? "✅ Balanced" : "⚠️ MISMATCH"} — stored {fmtMoney(recon.stored_balance)} vs
+            ledger {fmtMoney(recon.ledger_sum)} across {recon.transaction_count} entries
+            (difference {fmtMoney(recon.difference)})
           </div>
         )}
 
@@ -310,13 +310,13 @@ export default function WalletPage() {
                       <td><span className={`badge ${meta.badge}`}>{meta.icon} {meta.label}</span></td>
                       <td style={{ fontSize: "0.82rem", color: "var(--text-secondary)" }}>{t.note || "—"}</td>
                       <td style={{ textAlign: "right", fontWeight: 700, color: positive ? "var(--success)" : "var(--danger)" }}>
-                        {positive ? "+" : "−"}৳{Math.abs(t.amount).toFixed(2)}
+                        {positive ? "+" : "−"}{fmtMoney(Math.abs(t.amount))}
                       </td>
                       <td style={{ textAlign: "right", color: "var(--text-tertiary)" }}>
-                        ৳{t.balance_after.toFixed(2)}
+                        {fmtMoney(t.balance_after)}
                       </td>
                       <td style={{ fontSize: "0.78rem", color: "var(--text-tertiary)" }}>
-                        {new Date(t.created_at + "Z").toLocaleString()}
+                        {fmtDateTime(`${t.created_at}Z`)}
                       </td>
                     </tr>
                   );
